@@ -159,44 +159,48 @@ app.post("/create_account", (req, res) => {
 });
 
 app.post("/login", (req, res) => {
-    const { email, password } = req.body;
+    console.log("Incoming body:", req.body);
 
-    // Check if the email exists in the accounts table
+    const { email, password } = req.body;
+    if (!email || !password) {
+        return res.status(400).json({ error: "Missing email or password." });
+    }
+
     db.query("SELECT * FROM accounts WHERE email = ?", [email], (err, results) => {
         if (err) {
             console.error("Database Error:", err);
             return res.status(500).json({ error: "Internal server error." });
         }
 
-        // If the email doesn't exist
         if (results.length === 0) {
             return res.status(400).json({ error: "Invalid email or password." });
         }
 
         const user = results[0];
+        console.log("User from DB:", user);
 
-        // Compare the provided password with the stored hashed password
         bcrypt.compare(password, user.password, (err, isMatch) => {
             if (err) {
                 console.error("Password Comparison Error:", err);
                 return res.status(500).json({ error: "Internal server error." });
             }
 
-            // If the password does not match
             if (!isMatch) {
                 return res.status(400).json({ error: "Invalid email or password." });
             }
 
-            // Store user details in session
-            req.session.user = { account_id: user.account_id, email: user.email };
+            if (!req.session) {
+                console.error("Session not initialized!");
+            }
 
-            // Console log session details
+            req.session.user = { account_id: user.account_id, email: user.email,  user_level: user.user_level };
             console.log("Session Created:", req.session.user);
 
-            res.json({ message: "Login successful", account_id: user.account_id, email: user.email });
+            res.json({ message: "Login successful", account_id: user.account_id, email: user.email, user_level: user.user_level });
         });
     });
 });
+
 
 app.get("/session", (req, res) => {
     if (req.session.user) {

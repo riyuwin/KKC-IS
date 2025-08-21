@@ -5,7 +5,8 @@ import { styled } from "@mui/material/styles";
 import { useTheme } from "@mui/material/styles";
 import bgImage from "../../images/login-bg.jpg";
 import logo from "../../images/kkc-logo.png";
-
+import ValidateLogin from "../logics/auth/ValidateLogin";
+import { useNavigate } from "react-router-dom";
 
 const LayoutTextField = styled(TextField)(({ theme }) => ({
     "& .MuiInputBase-root": {
@@ -28,15 +29,24 @@ export default function Login() {
     const theme = useTheme();
     const isMobile = useMediaQuery(theme.breakpoints.down("md"));
 
-    const [form, setForm] = useState({ username: "", password: "" });
+    const [form, setForm] = useState({ email: "", password: "" });
+
+    const navigate = useNavigate();
 
     const handleChange = (e) => {
         setForm((f) => ({ ...f, [e.target.name]: e.target.value }));
     };
 
-    const handleSubmit = (e) => {
+    const handleSubmit = async (e) => {
         e.preventDefault();
         console.log("Login:", form);
+ 
+        if (!form.email || !form.password) { 
+            console.log("Please provide both email and password.");
+            return;
+        } 
+        
+        ValidateLogin(form.email, form.password, navigate);  
     };
 
     return (
@@ -142,13 +152,13 @@ export default function Login() {
                         </Typography>
 
                         <Typography variant="subtitle2" sx={{ mb: 1, color: "black" }}>
-                            Username
+                            Email
                         </Typography>
                         <LayoutTextField
                             fullWidth
-                            name="username"
-                            placeholder="Enter your username"
-                            value={form.username}
+                            name="email"
+                            placeholder="Enter your email"
+                            value={form.email}
                             onChange={handleChange}
                             margin="dense"
                             InputProps={{
