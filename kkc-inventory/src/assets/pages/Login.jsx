@@ -206,7 +206,7 @@ export default function Login() {
                                 fontWeight: 600,
                                 fontSize: "1rem",
                                 bgcolor: "#E67600",
-                                "&:hover": { bgcolor: "#FA8201" },
+                                "&:hover": { bgcolor: "#f99f3fff" },
                             }}
                         >
                             Log In
