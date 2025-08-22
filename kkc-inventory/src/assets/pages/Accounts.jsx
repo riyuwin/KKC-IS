@@ -211,7 +211,7 @@ export default function Accounts() {
         </TabPanel>
       </Paper>
 
-      {/* Dialogs */}
+      {/* Dialogs/Modal */}
       <AddWarehouseDialog
         open={openAddWarehouse}
         onClose={() => setOpenAddWarehouse(false)}
