@@ -1,33 +1,38 @@
 import React, { useMemo, useState } from "react";
 import { Box, Typography, Tabs, Tab, Paper, Button, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, IconButton, Stack, useMediaQuery } from "@mui/material";
 import { Edit as EditIcon, Delete as DeleteIcon, Add as AddIcon } from "@mui/icons-material";
+import { useTheme } from "@mui/material/styles";
 import AddWarehouseDialog from "../components/AddWarehouseDialog";
 import AddUserDialog from "../components/AddUserDialog";
-import { useTheme } from "@mui/material/styles";
+import SortableHeader, { getComparator, stableSort } from "../components/SortableHeader";
 
+// A11y Helpers for Tabs
 function a11yProps(index) {
-  return {
-    id: `accounts-tab-${index}`,
-    "aria-controls": `accounts-tabpanel-${index}`,
-  };
+  return { id: `accounts-tab-${index}`, "aria-controls": `accounts-tabpanel-${index}` };
 }
-
 function TabPanel({ children, value, index }) {
   return (
-    <Box
-      role="tabpanel"
-      hidden={value !== index}
-      id={`accounts-tabpanel-${index}`}
-      aria-labelledby={`accounts-tab-${index}`}
-      sx={{ pt: 2 }}
-    >
+    <Box role="tabpanel" hidden={value !== index} id={`accounts-tabpanel-${index}`} aria-labelledby={`accounts-tab-${index}`} sx={{ pt: 2 }}>
       {value === index && <Box>{children}</Box>}
     </Box>
   );
 }
 
-export default function Accounts() {
+// Column Configs (Labels/Header of Each Table)
+const WH_COLUMNS = [
+  { id: "name", label: "Name" },
+  { id: "location", label: "Location" },
+  { id: "assignedUsers", label: "Assigned User(s)" },
+];
 
+const USER_COLUMNS = [
+  { id: "fullName", label: "User’s Name" },
+  { id: "location", label: "Location" },
+  { id: "warehouse", label: "Warehouse Assigned" },
+  { id: "role", label: "Role" },
+];
+
+function Accounts() {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("md"));
 
@@ -45,25 +50,54 @@ export default function Accounts() {
 
   const [tab, setTab] = useState(0);
 
-  // Dialog/Modal state
+  // Dialog/Modal State
   const [openAddWarehouse, setOpenAddWarehouse] = useState(false);
   const [openAddUser, setOpenAddUser] = useState(false);
 
-  const warehouseNames = useMemo(() => warehouses.map(w => w.name), [warehouses]);
+  const warehouseNames = useMemo(() => warehouses.map((w) => w.name), [warehouses]);
 
-  // Handlers
+  // Sort State Per Tab
+  // Warehouse
+  const [whOrderBy, setWhOrderBy] = useState("name");
+  const [whOrder, setWhOrder] = useState("asc");
+
+  // Accounts/User
+  const [userOrderBy, setUserOrderBy] = useState("fullName");
+  const [userOrder, setUserOrder] = useState("asc");
+
+  // CRUD Handlers (front-end lang 'to)
   const handleAddWarehouse = (payload) => {
-    const nextId = Math.max(0, ...warehouses.map(w => w.id)) + 1;
-    setWarehouses(prev => [...prev, { id: nextId, ...payload }]);
+    const nextId = Math.max(0, ...warehouses.map((w) => w.id)) + 1;
+    setWarehouses((prev) => [...prev, { id: nextId, ...payload }]);
   };
-
   const handleAddUser = (payload) => {
-    const nextId = Math.max(0, ...users.map(u => u.id)) + 1;
-    setUsers(prev => [...prev, { id: nextId, ...payload }]);
+    const nextId = Math.max(0, ...users.map((u) => u.id)) + 1;
+    setUsers((prev) => [...prev, { id: nextId, ...payload }]);
+  };
+  const handleDeleteWarehouse = (id) => setWarehouses((prev) => prev.filter((w) => w.id !== id));
+  const handleDeleteUser = (id) => setUsers((prev) => prev.filter((u) => u.id !== id));
+
+  // Sort handlers (tiny + generic) 
+  const sortWarehouse = (property) => {
+    const isAsc = whOrderBy === property && whOrder === "asc";
+    setWhOrder(isAsc ? "desc" : "asc");
+    setWhOrderBy(property);
+  };
+  const sortUser = (property) => {
+    const isAsc = userOrderBy === property && userOrder === "asc";
+    setUserOrder(isAsc ? "desc" : "asc");
+    setUserOrderBy(property);
   };
 
-  const handleDeleteWarehouse = (id) => setWarehouses(prev => prev.filter(w => w.id !== id));
-  const handleDeleteUser = (id) => setUsers(prev => prev.filter(u => u.id !== id));
+  // Derived sorted data 
+  const sortedWarehouses = useMemo(
+    () => stableSort(warehouses, getComparator(whOrder, whOrderBy)),
+    [warehouses, whOrder, whOrderBy]
+  );
+  const sortedUsers = useMemo(
+    () => stableSort(users, getComparator(userOrder, userOrderBy)),
+    [users, userOrder, userOrderBy]
+  );
 
   return (
     <Box sx={{ p: 2, fontFamily: "Poppins, sans-serif" }}>
@@ -71,12 +105,8 @@ export default function Accounts() {
         Account Settings
       </Typography>
 
-      <Stack
-        direction="row"
-        justifyContent="space-between"
-        alignItems="center"
-        sx={{ mb: 2, px: 1 }}
-      >
+      {/* Header Row (Title + Add button) */}
+      <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2, px: 1 }}>
         <Typography variant="h6" sx={{ fontWeight: 700 }}>
           {tab === 0 ? "List of Warehouses" : "List of Accounts / Users"}
         </Typography>
@@ -114,40 +144,63 @@ export default function Accounts() {
         )}
       </Stack>
 
-      <Paper sx={{ borderRadius: 2 }}>
-        <Box sx={{ display: 'flex', justifyContent: 'center', mb: 3 }}>
-          <Tabs
-            value={tab}
-            onChange={(_, v) => setTab(v)}
-            textColor="inherit"
-            indicatorColor="primary"
-            sx={{ px: 2 }}
-            centered
-          >
-            <Tab label="Warehouses" {...a11yProps(0)} sx={{ fontWeight: 600, fontSize: '1rem', textTransform: 'none' }} />
-            <Tab label="Accounts / Users" {...a11yProps(1)} sx={{ fontWeight: 600, fontSize: '1rem', textTransform: 'none' }} />
+      <Paper sx={{ borderRadius: 2, p: 2, bgcolor: 'transparent', boxShadow: 'none' }}>
+        {/* Tabs */}
+        <Box sx={{ display: "flex", justifyContent: "center", mb: 3 }}>
+          <Tabs value={tab} onChange={(_, v) => setTab(v)} textColor="inherit" indicatorColor="primary" centered>
+            <Tab label="Warehouses" {...a11yProps(0)} sx={{ fontWeight: 600, fontSize: "1rem", textTransform: "none" }} />
+            <Tab label="Accounts / Users" {...a11yProps(1)} sx={{ fontWeight: 600, fontSize: "1rem", textTransform: "none" }} />
           </Tabs>
         </Box>
 
+        {/* Warehouses */}
         <TabPanel value={tab} index={0}>
-
-          <TableContainer component={Paper} sx={{ borderRadius: 2 }}>
-            <Table size="small" aria-label="warehouses table" sx={{ textAlign: 'center' }}>
-              <TableHead>
+          <TableContainer component={Paper}
+            sx={{
+              borderRadius: 2,
+              border: "1px solid #ddd",
+              boxShadow: "0px 2px 8px rgba(0,0,0,0.1)",
+              bgcolor: "background.paper",
+            }}>
+            <Table size="small" aria-label="warehouses table" sx={{ textAlign: "center" }}>
+              <TableHead
+                sx={{
+                  "& .MuiTableCell-root": {
+                    fontSize: "1.2rem",
+                    fontWeight: 700,
+                  },
+                }}>
                 <TableRow>
-                  <TableCell sx={{ fontWeight: 700, textAlign: 'center' }}>Name</TableCell>
-                  <TableCell sx={{ fontWeight: 700, textAlign: 'center' }}>Location</TableCell>
-                  <TableCell sx={{ fontWeight: 700, textAlign: 'center' }}>Assigned User(s)</TableCell>
-                  <TableCell sx={{ fontWeight: 700, textAlign: 'center' }} align="right">Actions</TableCell>
+                  {WH_COLUMNS.map((col) => (
+                    <SortableHeader
+                      key={col.id}
+                      id={col.id}
+                      label={col.label}
+                      order={whOrder}
+                      orderBy={whOrderBy}
+                      onSort={sortWarehouse}
+                    />
+                  ))}
+                  <TableCell sx={{ fontWeight: 700, textAlign: "center" }} align="right">
+                    Actions
+                  </TableCell>
                 </TableRow>
               </TableHead>
-              <TableBody>
-                {warehouses.map((w) => (
+
+              <TableBody
+                sx={{
+                  "& .MuiTableCell-root": {
+                    fontSize: "0.95rem",
+                  },
+                }}>
+                {sortedWarehouses.map((w) => (
                   <TableRow key={w.id} hover>
-                    <TableCell sx={{ textAlign: 'center' }}>{w.name}</TableCell>
-                    <TableCell sx={{ textAlign: 'center' }}>{w.location}</TableCell>
-                    <TableCell sx={{ textAlign: 'center' }}>{Array.isArray(w.assignedUsers) ? w.assignedUsers.join(", ") : w.assignedUsers}</TableCell>
-                    <TableCell align="right" sx={{ textAlign: 'center' }}>
+                    <TableCell sx={{ textAlign: "center" }}>{w.name}</TableCell>
+                    <TableCell sx={{ textAlign: "center" }}>{w.location}</TableCell>
+                    <TableCell sx={{ textAlign: "center" }}>
+                      {Array.isArray(w.assignedUsers) ? w.assignedUsers.join(", ") : w.assignedUsers}
+                    </TableCell>
+                    <TableCell align="right" sx={{ textAlign: "center" }}>
                       <IconButton size="small" color="primary">
                         <EditIcon fontSize="small" />
                       </IconButton>
@@ -169,26 +222,53 @@ export default function Accounts() {
           </TableContainer>
         </TabPanel>
 
+        {/* Accounts/Users */}
         <TabPanel value={tab} index={1}>
-          <TableContainer component={Paper} sx={{ borderRadius: 2 }}>
+          <TableContainer component={Paper}
+            sx={{
+              borderRadius: 2,
+              border: "1px solid #ddd",
+              boxShadow: "0px 2px 8px rgba(0,0,0,0.1)",
+              bgcolor: "background.paper",
+            }}>
             <Table size="small" aria-label="users table">
-              <TableHead>
+              <TableHead
+                sx={{
+                  "& .MuiTableCell-root": {
+                    fontSize: "1.2rem",
+                    fontWeight: 700,
+                  },
+                }}>
                 <TableRow>
-                  <TableCell sx={{ fontWeight: 700, textAlign: 'center' }}>User’s Name</TableCell>
-                  <TableCell sx={{ fontWeight: 700, textAlign: 'center' }}>Location</TableCell>
-                  <TableCell sx={{ fontWeight: 700, textAlign: 'center' }}>Warehouse Assigned</TableCell>
-                  <TableCell sx={{ fontWeight: 700, textAlign: 'center' }}>Role</TableCell>
-                  <TableCell sx={{ fontWeight: 700, textAlign: 'center' }} align="right">Actions</TableCell>
+                  {USER_COLUMNS.map((col) => (
+                    <SortableHeader
+                      key={col.id}
+                      id={col.id}
+                      label={col.label}
+                      order={userOrder}
+                      orderBy={userOrderBy}
+                      onSort={sortUser}
+                    />
+                  ))}
+                  <TableCell sx={{ fontWeight: 700, textAlign: "center" }} align="right">
+                    Actions
+                  </TableCell>
                 </TableRow>
               </TableHead>
-              <TableBody>
-                {users.map((u) => (
+
+              <TableBody
+                sx={{
+                  "& .MuiTableCell-root": {
+                    fontSize: "0.95rem",        // body a hair smaller than header
+                  },
+                }}>
+                {sortedUsers.map((u) => (
                   <TableRow key={u.id} hover>
-                    <TableCell sx={{ textAlign: 'center' }}>{u.fullName}</TableCell>
-                    <TableCell sx={{ textAlign: 'center' }}>{u.location}</TableCell>
-                    <TableCell sx={{ textAlign: 'center' }}>{u.warehouse}</TableCell>
-                    <TableCell sx={{ textAlign: 'center' }}>{u.role}</TableCell>
-                    <TableCell align="right" sx={{ textAlign: 'center' }}>
+                    <TableCell sx={{ textAlign: "center" }}>{u.fullName}</TableCell>
+                    <TableCell sx={{ textAlign: "center" }}>{u.location}</TableCell>
+                    <TableCell sx={{ textAlign: "center" }}>{u.warehouse}</TableCell>
+                    <TableCell sx={{ textAlign: "center" }}>{u.role}</TableCell>
+                    <TableCell align="right" sx={{ textAlign: "center" }}>
                       <IconButton size="small" color="primary">
                         <EditIcon fontSize="small" />
                       </IconButton>
@@ -211,7 +291,7 @@ export default function Accounts() {
         </TabPanel>
       </Paper>
 
-      {/* Dialogs/Modal */}
+      {/* Dialogs/Modals */}
       <AddWarehouseDialog
         open={openAddWarehouse}
         onClose={() => setOpenAddWarehouse(false)}
@@ -220,7 +300,6 @@ export default function Accounts() {
           setOpenAddWarehouse(false);
         }}
       />
-
       <AddUserDialog
         open={openAddUser}
         onClose={() => setOpenAddUser(false)}
@@ -233,3 +312,5 @@ export default function Accounts() {
     </Box>
   );
 }
+
+export default Accounts;
