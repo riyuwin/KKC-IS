@@ -144,7 +144,7 @@ function Accounts() {
         )}
       </Stack>
 
-      <Paper sx={{ borderRadius: 2, p: 2, bgcolor: 'transparent', boxShadow: 'none' }}>
+      <Paper sx={{ borderRadius: 2, p: 2 }}>
         {/* Tabs */}
         <Box sx={{ display: "flex", justifyContent: "center", mb: 3 }}>
           <Tabs value={tab} onChange={(_, v) => setTab(v)} textColor="inherit" indicatorColor="primary" centered>
