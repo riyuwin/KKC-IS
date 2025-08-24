@@ -224,6 +224,133 @@ app.post("/logout", (req, res) => {
         }
         res.json({ message: "Logged out successfully" });
     });
-});  
+}); 
+
+// PRODUCTS HELPERS 
+function computeStockStatus(stock) {
+  if (!Number.isFinite(stock) || stock <= 0) return 'Out of Stock';
+  if (stock <= 10) return 'Low Stock';
+  return 'In Stock';
+}
+
+async function generateUniqueSku(db) {
+  function makeSku() {
+    let s = '';
+    for (let i = 0; i < 10; i++) s += Math.floor(Math.random() * 10);
+    return s;
+  }
+  const query = (sql, params) =>
+    new Promise((resolve, reject) =>
+      db.query(sql, params, (e, r) => (e ? reject(e) : resolve(r)))
+    );
+
+  let attempts = 0;
+  while (attempts < 5) {
+    const sku = makeSku();
+    const rows = await query('SELECT product_id FROM products WHERE sku = ?', [sku]);
+    if (rows.length === 0) return sku;
+    attempts++;
+  }
+  throw new Error('Failed to generate unique SKU');
+}
+
+// PRODUCTS
+
+// GET /products?search=...
+app.get('/products', (req, res) => {
+  const search = (req.query.search || '').trim();
+  const like = `%${search}%`;
+  const sql = `
+    SELECT p.product_id, p.sku, p.product_name, p.description, p.unit,
+           p.stock, p.cost_price, p.selling_price, p.stock_status,
+           s.supplier_id, s.supplier_name
+    FROM products p
+    LEFT JOIN suppliers s ON s.supplier_id = p.supplier_id
+    ${search ? 'WHERE p.product_name LIKE ? OR p.sku LIKE ? OR p.description LIKE ?' : ''}
+    ORDER BY p.created_at DESC
+  `;
+  const params = search ? [like, like, like] : [];
+  db.query(sql, params, (err, rows) => {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json(rows);
+  });
+});
+
+// POST /products
+app.post('/products', async (req, res) => {
+  try {
+    let { sku, product_name, description, unit, stock, supplier_id, cost_price, selling_price } = req.body;
+
+    if (!product_name) return res.status(400).json({ error: 'product_name is required' });
+
+    stock = parseInt(stock ?? 0, 10) || 0;
+    cost_price = parseFloat(cost_price ?? 0) || 0;
+    selling_price = parseFloat(selling_price ?? 0) || 0;
+
+    if (!sku) sku = await generateUniqueSku(db);
+
+    const stock_status = computeStockStatus(stock);
+
+    const sql = `
+      INSERT INTO products (sku, product_name, description, unit, stock, supplier_id, cost_price, selling_price, stock_status)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `;
+    const params = [sku, product_name, description || null, unit || null, stock, supplier_id || null, cost_price, selling_price, stock_status];
+
+    db.query(sql, params, (err, result) => {
+      if (err) return res.status(500).json({ error: err.message });
+      res.json({ message: 'Product created', product_id: result.insertId, sku, stock_status });
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// PUT /products/:id
+app.put('/products/:id', (req, res) => {
+  const { id } = req.params;
+  let { product_name, description, unit, stock, supplier_id, cost_price, selling_price } = req.body;
+
+  stock = parseInt(stock ?? 0, 10) || 0;
+  cost_price = parseFloat(cost_price ?? 0) || 0;
+  selling_price = parseFloat(selling_price ?? 0) || 0;
+
+  const stock_status = computeStockStatus(stock);
+
+  const sql = `
+    UPDATE products
+       SET product_name = ?, description = ?, unit = ?, stock = ?, supplier_id = ?,
+           cost_price = ?, selling_price = ?, stock_status = ?
+     WHERE product_id = ?
+  `;
+  const params = [product_name, description, unit, stock, supplier_id || null, cost_price, selling_price, stock_status, id];
+
+  db.query(sql, params, (err) => {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json({ message: 'Product updated', stock_status });
+  });
+});
+
+// DELETE /products/:id
+app.delete('/products/:id', (req, res) => {
+  const { id } = req.params;
+  db.query('DELETE FROM products WHERE product_id = ?', [id], (err) => {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json({ message: 'Product deleted' });
+  });
+});
+
+// SUPPLIERS
+
+app.get('/suppliers', (req, res) => {
+  db.query('SELECT supplier_id, supplier_name FROM suppliers ORDER BY supplier_name', (err, rows) => {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json(rows);
+  });
+});
+
+
+
+
 
 app.listen(process.env.VITE_PORT, () => console.log(`Server running on port ${process.env.VITE_PORT}`));
