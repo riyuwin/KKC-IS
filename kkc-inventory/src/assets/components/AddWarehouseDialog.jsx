@@ -37,14 +37,14 @@ export default function AddWarehouseDialog({ open, onClose, onSubmit }) {
             onChange={handleChange}
             fullWidth
           />
-          <TextField
+          {/* <TextField
             label="Assigned Users (comma-separated)"
             name="assignedUsers"
             value={form.assignedUsers}
             onChange={handleChange}
             fullWidth
             placeholder="e.g., Jane D., Mark T."
-          />
+          /> */}
         </Stack>
       </DialogContent>
       <DialogActions>

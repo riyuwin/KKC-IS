@@ -16,7 +16,7 @@ const db = mysql.createPool({
     password: process.env.VITE_DB_PASSWORD,
     database: process.env.VITE_DB_NAME,
     waitForConnections: true,
-    connectionLimit: 10, 
+    connectionLimit: 10,
     queueLimit: 0
 });
 
@@ -25,7 +25,7 @@ db.getConnection((err, connection) => {
         console.error("Database connection failed: " + err.stack);
     } else {
         console.log("Connected to MySQL database.");
-        connection.release(); 
+        connection.release();
     }
 });
 
@@ -48,7 +48,7 @@ app.use(session({
 }));
 
 app.get("/accounts_id", (req, res) => {
-    const { accountId } = req.query;  
+    const { accountId } = req.query;
 
     if (!accountId) {
         return res.status(400).json({ error: "accountId is required" });
@@ -60,10 +60,10 @@ app.get("/accounts_id", (req, res) => {
         if (err) {
             return res.status(500).json({ error: err.message });
         }
-        res.json(results);  
+        res.json(results);
     });
 });
- 
+
 app.get("/accounts", (req, res) => {
     db.query("SELECT * FROM accounts", (err, results) => {
         if (err) return res.status(500).json({ error: err });
@@ -76,7 +76,7 @@ app.get("/basic_information", (req, res) => {
         if (err) return res.status(500).json({ error: err });
         res.json(results);
     });
-}); 
+});
 
 app.post("/create_account", (req, res) => {
     const { warehouse_id, fullname, username, email, password, role } = req.body;
@@ -129,7 +129,7 @@ app.post("/create_account", (req, res) => {
                                     res.status(500).json({ error: err.message });
                                 });
                             }
- 
+
                             connection.commit((err) => {
                                 if (err) {
                                     console.error("Commit Error:", err);
@@ -140,9 +140,9 @@ app.post("/create_account", (req, res) => {
                                 }
 
                                 connection.release();
-                                res.json({ 
-                                    message: "Account created successfully", 
-                                    id: result.insertId 
+                                res.json({
+                                    message: "Account created successfully",
+                                    id: result.insertId
                                 });
                             });
                         }
@@ -188,7 +188,7 @@ app.post("/login", (req, res) => {
                 console.error("Session not initialized!");
             }
 
-            req.session.user = { account_id: user.account_id, email: user.email,  role: user.role };
+            req.session.user = { account_id: user.account_id, email: user.email, role: user.role };
             console.log("Session Created:", req.session.user);
 
             res.json({ message: "Login successful", account_id: user.account_id, email: user.email, role: user.role });
@@ -199,7 +199,7 @@ app.post("/login", (req, res) => {
 
 app.get("/session", (req, res) => {
     if (req.session.user) {
-        console.log("Active Session:", req.session); 
+        console.log("Active Session:", req.session);
         res.json({ loggedIn: true, user: req.session.user });
     } else {
         console.log("No active session");
@@ -219,14 +219,46 @@ app.post("/logout", (req, res) => {
         }
         res.json({ message: "Logged out successfully" });
     });
-});  
- 
-app.post("/insert_warehouse", (req, res) => { 
+});
+
+app.post("/insert_warehouse", (req, res) => {
     const { warehouseName, warehouseLocation } = req.body;
 
-    const insertWarehouseQuery = `
-        INSERT INTO warehouse (warehouse_name, location, added_at) 
-        VALUES (?, ?, NOW())
+    const insertWarehouseQuery = `INSERT INTO warehouse (warehouse_name, location, added_at) VALUES (?, ?, NOW())`;
+
+    db.getConnection((err, connection) => {
+        if (err) {
+            console.error("Connection Error:", err);
+            return res.status(500).json({ error: err.message });
+        }
+
+        connection.query(
+            insertWarehouseQuery,
+            [warehouseName, warehouseLocation],
+            (err, result) => {
+                connection.release(); 
+
+                if (err) {
+                    console.error("Warehouse Insertion Error:", err);
+                    return res.status(500).json({ error: err.message });
+                }
+
+                res.json({
+                    message: "Warehouse added successfully",
+                    id: result.insertId
+                });
+            }
+        );
+    });
+}); 
+
+app.post("/update_warehouse", (req, res) => {
+    const { warehouseId, warehouseName, warehouseLocation } = req.body;
+
+    const updateWarehouseQuery = `
+        UPDATE warehouse 
+        SET warehouse_name = ?, location = ?, added_at = NOW() 
+        WHERE warehouse_id = ?
     `;
 
     db.getConnection((err, connection) => {
@@ -235,38 +267,47 @@ app.post("/insert_warehouse", (req, res) => {
             return res.status(500).json({ error: err.message });
         }
 
-        connection.beginTransaction((err) => {
-            if (err) {
-                console.error("Transaction Error:", err);
-                return connection.rollback(() => {
-                    res.status(500).json({ error: err.message });
+        connection.query(
+            updateWarehouseQuery,
+            [warehouseName, warehouseLocation, warehouseId],
+            (err, result) => {
+                connection.release();
+
+                if (err) {
+                    console.error("Warehouse Update Error:", err);
+                    return res.status(500).json({ error: err.message });
+                }
+
+                res.json({
+                    message: "Warehouse updated successfully",
+                    affectedRows: result.affectedRows
                 });
             }
+        );
+    });
+});
 
-            connection.query(
-                insertWarehouseQuery,
-                [warehouseName, warehouseLocation],
-                (err, result) => {
-                    if (err) {
-                        console.error("Warehouse Insertion Error:", err);
-                        return connection.rollback(() => {
-                            res.status(500).json({ error: err.message });
-                        });
-                    }
+
+app.post("/delete_warehouse", (req, res) => {
+    const { warehouseId } = req.body;
+
+    if (!warehouseId) {
+        return res.status(400).json({ error: "Warehouse ID is required." });
+    }
  
-                    connection.commit((err) => {
-                        if (err) {
-                            console.error("Commit Error:", err);
-                            return connection.rollback(() => {
-                                res.status(500).json({ error: err.message });
-                            });
-                        }
+    const deleteBurialAssistanceQuery = "DELETE FROM warehouse WHERE warehouse_id = ?";
+ 
+    db.query(deleteBurialAssistanceQuery, [warehouseId], (err, results) => {
+        if (err) {
+            console.error("Database Error:", err);
+            return res.status(500).json({ error: "Internal server error." });
+        }
 
-                        res.json({ message: "Warehouse added successfully", id: result.insertId });
-                    });
-                }
-            );
-        });
+        if (results.affectedRows === 0) {
+            return res.status(404).json({ error: "Warehouse not found." });
+        }
+
+        res.json({ message: "Warehouse deleted successfully!" });
     });
 });
 
@@ -275,50 +316,50 @@ app.get("/retrieve_warehouse", (req, res) => {
         if (err) return res.status(500).json({ error: err });
         res.json(results);
     });
-}); 
+});
 
 app.get("/retrieve_accounts", (req, res) => {
     db.query("SELECT * FROM accounts", (err, results) => {
         if (err) return res.status(500).json({ error: err });
         res.json(results);
     });
-});  
+});
 
 // PRODUCTS HELPERS 
 function computeStockStatus(stock) {
-  if (!Number.isFinite(stock) || stock <= 0) return 'Out of Stock';
-  if (stock <= 10) return 'Low Stock';
-  return 'In Stock';
+    if (!Number.isFinite(stock) || stock <= 0) return 'Out of Stock';
+    if (stock <= 10) return 'Low Stock';
+    return 'In Stock';
 }
 
 async function generateUniqueSku(db) {
-  function makeSku() {
-    let s = '';
-    for (let i = 0; i < 10; i++) s += Math.floor(Math.random() * 10);
-    return s;
-  }
-  const query = (sql, params) =>
-    new Promise((resolve, reject) =>
-      db.query(sql, params, (e, r) => (e ? reject(e) : resolve(r)))
-    );
+    function makeSku() {
+        let s = '';
+        for (let i = 0; i < 10; i++) s += Math.floor(Math.random() * 10);
+        return s;
+    }
+    const query = (sql, params) =>
+        new Promise((resolve, reject) =>
+            db.query(sql, params, (e, r) => (e ? reject(e) : resolve(r)))
+        );
 
-  let attempts = 0;
-  while (attempts < 5) {
-    const sku = makeSku();
-    const rows = await query('SELECT product_id FROM products WHERE sku = ?', [sku]);
-    if (rows.length === 0) return sku;
-    attempts++;
-  }
-  throw new Error('Failed to generate unique SKU');
+    let attempts = 0;
+    while (attempts < 5) {
+        const sku = makeSku();
+        const rows = await query('SELECT product_id FROM products WHERE sku = ?', [sku]);
+        if (rows.length === 0) return sku;
+        attempts++;
+    }
+    throw new Error('Failed to generate unique SKU');
 }
 
 // PRODUCTS
 
 // GET /products?search=...
 app.get('/products', (req, res) => {
-  const search = (req.query.search || '').trim();
-  const like = `%${search}%`;
-  const sql = `
+    const search = (req.query.search || '').trim();
+    const like = `%${search}%`;
+    const sql = `
     SELECT p.product_id, p.sku, p.product_name, p.description, p.unit,
            p.stock, p.cost_price, p.selling_price, p.stock_status,
            s.supplier_id, s.supplier_name
@@ -327,84 +368,84 @@ app.get('/products', (req, res) => {
     ${search ? 'WHERE p.product_name LIKE ? OR p.sku LIKE ? OR p.description LIKE ?' : ''}
     ORDER BY p.created_at DESC
   `;
-  const params = search ? [like, like, like] : [];
-  db.query(sql, params, (err, rows) => {
-    if (err) return res.status(500).json({ error: err.message });
-    res.json(rows);
-  });
+    const params = search ? [like, like, like] : [];
+    db.query(sql, params, (err, rows) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json(rows);
+    });
 });
 
 // POST /products
 app.post('/products', async (req, res) => {
-  try {
-    let { sku, product_name, description, unit, stock, supplier_id, cost_price, selling_price } = req.body;
+    try {
+        let { sku, product_name, description, unit, stock, supplier_id, cost_price, selling_price } = req.body;
 
-    if (!product_name) return res.status(400).json({ error: 'product_name is required' });
+        if (!product_name) return res.status(400).json({ error: 'product_name is required' });
+
+        stock = parseInt(stock ?? 0, 10) || 0;
+        cost_price = parseFloat(cost_price ?? 0) || 0;
+        selling_price = parseFloat(selling_price ?? 0) || 0;
+
+        if (!sku) sku = await generateUniqueSku(db);
+
+        const stock_status = computeStockStatus(stock);
+
+        const sql = `
+      INSERT INTO products (sku, product_name, description, unit, stock, supplier_id, cost_price, selling_price, stock_status)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `;
+        const params = [sku, product_name, description || null, unit || null, stock, supplier_id || null, cost_price, selling_price, stock_status];
+
+        db.query(sql, params, (err, result) => {
+            if (err) return res.status(500).json({ error: err.message });
+            res.json({ message: 'Product created', product_id: result.insertId, sku, stock_status });
+        });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// PUT /products/:id
+app.put('/products/:id', (req, res) => {
+    const { id } = req.params;
+    let { product_name, description, unit, stock, supplier_id, cost_price, selling_price } = req.body;
 
     stock = parseInt(stock ?? 0, 10) || 0;
     cost_price = parseFloat(cost_price ?? 0) || 0;
     selling_price = parseFloat(selling_price ?? 0) || 0;
 
-    if (!sku) sku = await generateUniqueSku(db);
-
     const stock_status = computeStockStatus(stock);
 
     const sql = `
-      INSERT INTO products (sku, product_name, description, unit, stock, supplier_id, cost_price, selling_price, stock_status)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `;
-    const params = [sku, product_name, description || null, unit || null, stock, supplier_id || null, cost_price, selling_price, stock_status];
-
-    db.query(sql, params, (err, result) => {
-      if (err) return res.status(500).json({ error: err.message });
-      res.json({ message: 'Product created', product_id: result.insertId, sku, stock_status });
-    });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-
-// PUT /products/:id
-app.put('/products/:id', (req, res) => {
-  const { id } = req.params;
-  let { product_name, description, unit, stock, supplier_id, cost_price, selling_price } = req.body;
-
-  stock = parseInt(stock ?? 0, 10) || 0;
-  cost_price = parseFloat(cost_price ?? 0) || 0;
-  selling_price = parseFloat(selling_price ?? 0) || 0;
-
-  const stock_status = computeStockStatus(stock);
-
-  const sql = `
     UPDATE products
        SET product_name = ?, description = ?, unit = ?, stock = ?, supplier_id = ?,
            cost_price = ?, selling_price = ?, stock_status = ?
      WHERE product_id = ?
   `;
-  const params = [product_name, description, unit, stock, supplier_id || null, cost_price, selling_price, stock_status, id];
+    const params = [product_name, description, unit, stock, supplier_id || null, cost_price, selling_price, stock_status, id];
 
-  db.query(sql, params, (err) => {
-    if (err) return res.status(500).json({ error: err.message });
-    res.json({ message: 'Product updated', stock_status });
-  });
+    db.query(sql, params, (err) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json({ message: 'Product updated', stock_status });
+    });
 });
 
 // DELETE /products/:id
 app.delete('/products/:id', (req, res) => {
-  const { id } = req.params;
-  db.query('DELETE FROM products WHERE product_id = ?', [id], (err) => {
-    if (err) return res.status(500).json({ error: err.message });
-    res.json({ message: 'Product deleted' });
-  });
+    const { id } = req.params;
+    db.query('DELETE FROM products WHERE product_id = ?', [id], (err) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json({ message: 'Product deleted' });
+    });
 });
 
 // SUPPLIERS
 
 app.get('/suppliers', (req, res) => {
-  db.query('SELECT supplier_id, supplier_name FROM suppliers ORDER BY supplier_name', (err, rows) => {
-    if (err) return res.status(500).json({ error: err.message });
-    res.json(rows);
-  });
+    db.query('SELECT supplier_id, supplier_name FROM suppliers ORDER BY supplier_name', (err, rows) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json(rows);
+    });
 });
 
 

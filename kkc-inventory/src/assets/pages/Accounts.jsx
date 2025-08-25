@@ -9,6 +9,10 @@ import InsertWarehouse from "../logics/auth/Insert/InsertWarehouse";
 import RetrieveWarehouse from "../logics/auth/Retrieve/RetrieveWarehouse";
 import InsertAccount from "../logics/auth/Insert/InsertAccount";
 import RetrieveAccounts from "../logics/auth/Retrieve/RetrieveAccounts";
+import EditWarehouseDialog from "../components/EditWarehouseDialog";
+import UpdateWarehouse from "../logics/auth/Update/UpdateWarehouse";
+import DeleteWarehouse from "../logics/auth/Delete/DeleteWarehouse";
+import EditUserDialog from "../components/EditUserDialog";
 
 // A11y Helpers for Tabs
 function a11yProps(index) {
@@ -40,22 +44,10 @@ const USER_COLUMNS = [
 
 function Accounts() {
   const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down("md"));
-
-  // Dummy Data
-  /* const [warehouses, setWarehouses] = useState([
-    { id: 1, name: "Quezon Warehouse", location: "Quezon City", assignedUsers: ["Jane D.", "Mark T."] },
-    { id: 2, name: "Manila Warehouse", location: "Manila", assignedUsers: ["Leo P."] },
-  ]); */
+  const isMobile = useMediaQuery(theme.breakpoints.down("md")); 
 
   const [warehouses, setWarehouses] = useState([]);
-  const [users, setUsers] = useState([]);
-
-  /* const [users, setUsers] = useState([
-    { id: 1, fullName: "Jane Dela Cruz", location: "Quezon City", warehouse: "Quezon Warehouse", role: "Admin" },
-    { id: 2, fullName: "Mark Tan", location: "Intramuros", warehouse: "Intramuros Warehouse", role: "Warehouse" },
-    { id: 3, fullName: "Leo Pangan", location: "Manila", warehouse: "Manila Warehouse", role: "Warehouse" },
-  ]); */
+  const [users, setUsers] = useState([]); 
 
   const [tab, setTab] = useState(0);
 
@@ -67,34 +59,69 @@ function Accounts() {
   const warehouseNames = useMemo(
     () => warehouses.map((w) => ({ label: w.warehouse_name, value: w.warehouse_id })),
     [warehouses]
-  );
+  );  
 
   useEffect(() => {
-      const fetchData = async () => {
-          const { data } = await RetrieveWarehouse();
-          console.log("Warehouse: ", data);
+    const fetchWarehouses = async () => {
+      const { data } = await RetrieveWarehouse();
+      setWarehouses(data);
+    };
 
-          setWarehouses(data);
-      };
+    fetchWarehouses(); // initial call
 
-      fetchData();
+    const interval = setInterval(fetchWarehouses, 2000); // every 5s
+    return () => clearInterval(interval); // cleanup
   }, []);
 
-  if (warehouses.warehouse_id == 3){
-      console.log("Warehouse1: ", warehouses);
+  useEffect(() => {
+    const fetchUsers = async () => {
+      const { data } = await RetrieveAccounts();
+      setUsers(data);
+    };
+
+    fetchUsers();
+
+    const interval = setInterval(fetchUsers, 2000);
+    return () => clearInterval(interval);
+  }, []);
+ 
+  const [selectedWarehouse, setSelectedWarehouse] = useState(null);
+  const [openEditDialog, setOpenEditDialog] = useState(false);
+
+  const handleEditDialogOpen = (warehouse) => {
+    setSelectedWarehouse(warehouse); // store selected warehouse details
+    setOpenEditDialog(true);
+  };
+
+  const handleDeleteDialogWarehouse = (warehouse_id) => {
+    console.log("Warehouse id: ", warehouse_id);
+    DeleteWarehouse(warehouse_id); 
   }
-    
-  useEffect(() => {
-      const fetchData = async () => {
-          const { data } = await RetrieveAccounts();
-          console.log("Accounts: ", data);
 
-          setUsers(data);
-      };
+  const handleSubmit = (payload) => {
+    console.log("Edited warehouse data:", payload);
 
-      fetchData();
-  }, []);
+    UpdateWarehouse(payload.warehouse_id, payload.warehouse_name, payload.location);
+    setOpenEditDialog(false);
+  }; 
 
+  const [openEdit, setOpenEdit] = useState(false);
+  const [selectedUser, setSelectedUser] = useState(null);
+
+  const handleEditUserClick = (user) => {
+    setSelectedUser(user);   // store the user to edit
+    setOpenEdit(true);       // open the dialog
+  };
+
+  const handleCloseEdit = () => {
+    setOpenEdit(false);
+    setSelectedUser(null);   // clear
+  };
+
+  const handleSubmitEdit = (payload) => {
+    onUpdateUser(payload);   // call API or parent handler
+    handleCloseEdit();
+  };
 
   // Sort State Per Tab
   // Warehouse
@@ -245,10 +272,10 @@ function Accounts() {
                       {Array.isArray(w.assignedUsers) ? w.assignedUsers.join(", ") : w.assignedUsers}
                     </TableCell> */}
                     <TableCell align="right" sx={{ textAlign: "center" }}>
-                      <IconButton size="small" color="primary">
+                      <IconButton size="small" color="primary" onClick={() => handleEditDialogOpen(w)}>
                         <EditIcon fontSize="small" />
                       </IconButton>
-                      <IconButton size="small" color="error" onClick={() => handleDeleteWarehouse(w.id)}>
+                      <IconButton size="small" color="error" onClick={() => handleDeleteDialogWarehouse(w.warehouse_id)}>
                         <DeleteIcon fontSize="small" />
                       </IconButton>
                     </TableCell>
@@ -318,10 +345,10 @@ function Accounts() {
                           <TableCell sx={{ textAlign: "center" }}>{wh.warehouse_name}</TableCell>
                         </>
                       ) : null;
-                    })()} 
+                    })()}
                     <TableCell sx={{ textAlign: "center" }}>{u.role}</TableCell>
                     <TableCell align="right" sx={{ textAlign: "center" }}>
-                      <IconButton size="small" color="primary">
+                      <IconButton size="small" color="primary" onClick={() => handleEditUserClick(u)}>
                         <EditIcon fontSize="small" />
                       </IconButton>
                       <IconButton size="small" color="error" onClick={() => handleDeleteUser(u.id)}>
@@ -352,6 +379,15 @@ function Accounts() {
           setOpenAddWarehouse(false);
         }}
       />
+
+      <EditUserDialog
+        open={openEdit}
+        onClose={handleCloseEdit}
+        onSubmit={handleSubmitEdit}
+        warehouses={warehouses}
+        user={selectedUser}
+      />
+
       <AddUserDialog
         open={openAddUser}
         onClose={() => setOpenAddUser(false)}
@@ -360,6 +396,13 @@ function Accounts() {
           handleAddUser(payload);
           setOpenAddUser(false);
         }}
+      />
+
+      <EditWarehouseDialog
+        open={openEditDialog}
+        onClose={() => setOpenEditDialog(false)}
+        onSubmit={handleSubmit}
+        warehouse={selectedWarehouse}
       />
     </Box>
   );

@@ -1,8 +1,11 @@
 // AUTH 
 export const PortLogin = `${import.meta.env.VITE_API_LOGIN}`;
 export const PortSignUp = `${import.meta.env.VITE_API_SIGNUP}`;
+
 export const PortRetrieveAccounts = `${import.meta.env.VITE_API_RETRIEVE_ACCOUNTS}`;
 
+export const PortDeleteWarehouse = `${import.meta.env.VITE_API_DELETE_WAREHOUSE}`;
+export const PortUpdateWarehouse = `${import.meta.env.VITE_API_UPDATE_WAREHOUSE}`;
 export const PortInsertWarehouse = `${import.meta.env.VITE_API_INSERT_WAREHOUSE}`;
 export const PortRetrieveWarehouse = `${import.meta.env.VITE_API_RETRIEVE_WAREHOUSE}`;
 
