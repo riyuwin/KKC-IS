@@ -1,10 +1,14 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Box, Typography, Tabs, Tab, Paper, Button, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, IconButton, Stack, useMediaQuery } from "@mui/material";
 import { Edit as EditIcon, Delete as DeleteIcon, Add as AddIcon } from "@mui/icons-material";
 import { useTheme } from "@mui/material/styles";
 import AddWarehouseDialog from "../components/AddWarehouseDialog";
 import AddUserDialog from "../components/AddUserDialog";
 import SortableHeader, { getComparator, stableSort } from "../components/SortableHeader";
+import InsertWarehouse from "../logics/auth/InsertWarehouse";
+import RetrieveWarehouse from "../logics/auth/RetrieveWarehouse";
+import InsertAccount from "../logics/auth/InsertAccount";
+import RetrieveAccounts from "../logics/auth/RetrieveAccounts";
 
 // A11y Helpers for Tabs
 function a11yProps(index) {
@@ -20,12 +24,14 @@ function TabPanel({ children, value, index }) {
 
 // Column Configs (Labels/Header of Each Table)
 const WH_COLUMNS = [
-  { id: "name", label: "Name" },
+  { id: "number", label: "No." },
+  { id: "warehouse_name", label: "Name" },
   { id: "location", label: "Location" },
-  { id: "assignedUsers", label: "Assigned User(s)" },
+  /* { id: "assignedUsers", label: "Assigned User(s)" }, */
 ];
 
 const USER_COLUMNS = [
+  { id: "number", label: "No." },
   { id: "fullName", label: "User’s Name" },
   { id: "location", label: "Location" },
   { id: "warehouse", label: "Warehouse Assigned" },
@@ -37,16 +43,19 @@ function Accounts() {
   const isMobile = useMediaQuery(theme.breakpoints.down("md"));
 
   // Dummy Data
-  const [warehouses, setWarehouses] = useState([
+  /* const [warehouses, setWarehouses] = useState([
     { id: 1, name: "Quezon Warehouse", location: "Quezon City", assignedUsers: ["Jane D.", "Mark T."] },
     { id: 2, name: "Manila Warehouse", location: "Manila", assignedUsers: ["Leo P."] },
-  ]);
+  ]); */
 
-  const [users, setUsers] = useState([
+  const [warehouses, setWarehouses] = useState([]);
+  const [users, setUsers] = useState([]);
+
+  /* const [users, setUsers] = useState([
     { id: 1, fullName: "Jane Dela Cruz", location: "Quezon City", warehouse: "Quezon Warehouse", role: "Admin" },
     { id: 2, fullName: "Mark Tan", location: "Intramuros", warehouse: "Intramuros Warehouse", role: "Warehouse" },
     { id: 3, fullName: "Leo Pangan", location: "Manila", warehouse: "Manila Warehouse", role: "Warehouse" },
-  ]);
+  ]); */
 
   const [tab, setTab] = useState(0);
 
@@ -54,7 +63,38 @@ function Accounts() {
   const [openAddWarehouse, setOpenAddWarehouse] = useState(false);
   const [openAddUser, setOpenAddUser] = useState(false);
 
-  const warehouseNames = useMemo(() => warehouses.map((w) => w.name), [warehouses]);
+  //const warehouseNames = useMemo(() => warehouses.map((w) => w.warehouse_name), [warehouses]);
+  const warehouseNames = useMemo(
+    () => warehouses.map((w) => ({ label: w.warehouse_name, value: w.warehouse_id })),
+    [warehouses]
+  );
+
+  useEffect(() => {
+      const fetchData = async () => {
+          const { data } = await RetrieveWarehouse();
+          console.log("Warehouse: ", data);
+
+          setWarehouses(data);
+      };
+
+      fetchData();
+  }, []);
+
+  if (warehouses.warehouse_id == 3){
+      console.log("Warehouse1: ", warehouses);
+  }
+    
+  useEffect(() => {
+      const fetchData = async () => {
+          const { data } = await RetrieveAccounts();
+          console.log("Accounts: ", data);
+
+          setUsers(data);
+      };
+
+      fetchData();
+  }, []);
+
 
   // Sort State Per Tab
   // Warehouse
@@ -68,12 +108,15 @@ function Accounts() {
   // CRUD Handlers (front-end lang 'to)
   const handleAddWarehouse = (payload) => {
     const nextId = Math.max(0, ...warehouses.map((w) => w.id)) + 1;
-    setWarehouses((prev) => [...prev, { id: nextId, ...payload }]);
+    //setWarehouses((prev) => [...prev, { id: nextId, ...payload }]);
+    InsertWarehouse(payload.name, payload.location);
   };
   const handleAddUser = (payload) => {
     const nextId = Math.max(0, ...users.map((u) => u.id)) + 1;
-    setUsers((prev) => [...prev, { id: nextId, ...payload }]);
+    // setUsers((prev) => [...prev, { id: nextId, ...payload }]);    
+    InsertAccount(payload.warehouse, payload.fullName, payload.username, payload.email, payload.password, payload.role);
   };
+
   const handleDeleteWarehouse = (id) => setWarehouses((prev) => prev.filter((w) => w.id !== id));
   const handleDeleteUser = (id) => setUsers((prev) => prev.filter((u) => u.id !== id));
 
@@ -193,13 +236,14 @@ function Accounts() {
                     fontSize: "0.95rem",
                   },
                 }}>
-                {sortedWarehouses.map((w) => (
+                {sortedWarehouses.map((w, index) => (
                   <TableRow key={w.id} hover>
-                    <TableCell sx={{ textAlign: "center" }}>{w.name}</TableCell>
+                    <TableCell sx={{ textAlign: "center" }}>{index + 1}</TableCell>
+                    <TableCell sx={{ textAlign: "center" }}>{w.warehouse_name}</TableCell>
                     <TableCell sx={{ textAlign: "center" }}>{w.location}</TableCell>
-                    <TableCell sx={{ textAlign: "center" }}>
+                    {/* <TableCell sx={{ textAlign: "center" }}>
                       {Array.isArray(w.assignedUsers) ? w.assignedUsers.join(", ") : w.assignedUsers}
-                    </TableCell>
+                    </TableCell> */}
                     <TableCell align="right" sx={{ textAlign: "center" }}>
                       <IconButton size="small" color="primary">
                         <EditIcon fontSize="small" />
@@ -262,11 +306,19 @@ function Accounts() {
                     fontSize: "0.95rem",        // body a hair smaller than header
                   },
                 }}>
-                {sortedUsers.map((u) => (
+                {sortedUsers.map((u, index) => (
                   <TableRow key={u.id} hover>
-                    <TableCell sx={{ textAlign: "center" }}>{u.fullName}</TableCell>
-                    <TableCell sx={{ textAlign: "center" }}>{u.location}</TableCell>
-                    <TableCell sx={{ textAlign: "center" }}>{u.warehouse}</TableCell>
+                    <TableCell sx={{ textAlign: "center" }}>{index + 1}</TableCell>
+                    <TableCell sx={{ textAlign: "center" }}>{u.fullname}</TableCell>
+                    {(() => {
+                      const wh = warehouses.find(w => w.warehouse_id === u.warehouse_id);
+                      return wh ? (
+                        <>
+                          <TableCell sx={{ textAlign: "center" }}>{wh.location}</TableCell>
+                          <TableCell sx={{ textAlign: "center" }}>{wh.warehouse_name}</TableCell>
+                        </>
+                      ) : null;
+                    })()} 
                     <TableCell sx={{ textAlign: "center" }}>{u.role}</TableCell>
                     <TableCell align="right" sx={{ textAlign: "center" }}>
                       <IconButton size="small" color="primary">

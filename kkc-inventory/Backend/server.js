@@ -79,7 +79,7 @@ app.get("/basic_information", (req, res) => {
 }); 
 
 app.post("/create_account", (req, res) => {
-    const { firstName, middleName, lastName, extName, gender, birthday, phoneNumber, address, membership, email, password, currentDate } = req.body;
+    const { warehouse_id, fullname, username, email, password, role } = req.body;
 
     // Check if the email already exists
     db.query("SELECT * FROM accounts WHERE email = ?", [email], (err, results) => {
@@ -88,72 +88,67 @@ app.post("/create_account", (req, res) => {
             return res.status(500).json({ error: "Internal server error." });
         }
 
-        // If email already exists, return an error
         if (results.length > 0) {
             return res.status(400).json({ error: "Email is already taken." });
         }
 
-        // Hash the password before saving it
+        // Hash password
         bcrypt.hash(password, 10, (err, hashedPassword) => {
             if (err) {
                 console.error("Password Hashing Error:", err);
                 return res.status(500).json({ error: "Failed to hash password." });
             }
 
-            // If email doesn't exist, proceed with the insert
-            const insertAccountQuery = "INSERT INTO accounts (email, password, user_level, date_added) VALUES (?, ?, ?, ?)";
-            const insertBasicInfoQuery = "INSERT INTO basic_information (account_id, fname, mname, lname, ext, gender, bdate, phoneNumber, address) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
+            const insertAccountQuery = `
+                INSERT INTO accounts 
+                (warehouse_id, fullname, username, email, password, role, added_at) 
+                VALUES (?, ?, ?, ?, ?, ?, NOW())
+            `;
 
             db.getConnection((err, connection) => {
                 if (err) {
-                    console.error("Transaction Error:", err);
+                    console.error("Connection Error:", err);
                     return res.status(500).json({ error: err.message });
                 }
 
                 connection.beginTransaction((err) => {
                     if (err) {
                         console.error("Transaction Error:", err);
-                        return connection.rollback(() => {
-                            res.status(500).json({ error: err.message });
-                        });
+                        connection.release();
+                        return res.status(500).json({ error: err.message });
                     }
 
-                    // Insert into accounts table with hashed password
-                    connection.query(insertAccountQuery, [email, hashedPassword, membership, currentDate], (err, accountResult) => {
-                        if (err) {
-                            console.error("Account Insertion Error:", err);
-                            return connection.rollback(() => {
-                                res.status(500).json({ error: err.message });
-                            });
-                        }
-
-                        const accountId = accountResult.insertId;
-
-                        // Insert into basic_information table with the account_id
-                        connection.query(insertBasicInfoQuery, [accountId, firstName, middleName, lastName, extName, gender, birthday, phoneNumber, address], (err, infoResult) => {
+                    connection.query(
+                        insertAccountQuery,
+                        [warehouse_id, fullname, username, email, hashedPassword, role],
+                        (err, result) => {
                             if (err) {
-                                console.error("Basic Information Insertion Error:", err);
+                                console.error("Account Insertion Error:", err);
                                 return connection.rollback(() => {
+                                    connection.release();
                                     res.status(500).json({ error: err.message });
                                 });
                             }
-
-                            // Commit transaction
+ 
                             connection.commit((err) => {
                                 if (err) {
                                     console.error("Commit Error:", err);
                                     return connection.rollback(() => {
+                                        connection.release();
                                         res.status(500).json({ error: err.message });
                                     });
                                 }
-                                connection.release(); 
-                                res.json({ message: "Account created successfully", account_id: accountId });
+
+                                connection.release();
+                                res.json({ 
+                                    message: "Account created successfully", 
+                                    id: result.insertId 
+                                });
                             });
-                        });
-                    });
+                        }
+                    );
                 });
             });
-
         });
     });
 });
@@ -225,5 +220,69 @@ app.post("/logout", (req, res) => {
         res.json({ message: "Logged out successfully" });
     });
 });  
+ 
+app.post("/insert_warehouse", (req, res) => { 
+    const { warehouseName, warehouseLocation } = req.body;
+
+    const insertWarehouseQuery = `
+        INSERT INTO warehouse (warehouse_name, location, added_at) 
+        VALUES (?, ?, NOW())
+    `;
+
+    db.getConnection((err, connection) => {
+        if (err) {
+            console.error("Connection Error:", err);
+            return res.status(500).json({ error: err.message });
+        }
+
+        connection.beginTransaction((err) => {
+            if (err) {
+                console.error("Transaction Error:", err);
+                return connection.rollback(() => {
+                    res.status(500).json({ error: err.message });
+                });
+            }
+
+            connection.query(
+                insertWarehouseQuery,
+                [warehouseName, warehouseLocation],
+                (err, result) => {
+                    if (err) {
+                        console.error("Warehouse Insertion Error:", err);
+                        return connection.rollback(() => {
+                            res.status(500).json({ error: err.message });
+                        });
+                    }
+
+                    // Commit the transaction
+                    connection.commit((err) => {
+                        if (err) {
+                            console.error("Commit Error:", err);
+                            return connection.rollback(() => {
+                                res.status(500).json({ error: err.message });
+                            });
+                        }
+
+                        res.json({ message: "Warehouse added successfully", id: result.insertId });
+                    });
+                }
+            );
+        });
+    });
+});
+
+app.get("/retrieve_warehouse", (req, res) => {
+    db.query("SELECT * FROM warehouse", (err, results) => {
+        if (err) return res.status(500).json({ error: err });
+        res.json(results);
+    });
+}); 
+
+app.get("/retrieve_accounts", (req, res) => {
+    db.query("SELECT * FROM accounts", (err, results) => {
+        if (err) return res.status(500).json({ error: err });
+        res.json(results);
+    });
+}); 
 
 app.listen(process.env.VITE_PORT, () => console.log(`Server running on port ${process.env.VITE_PORT}`));

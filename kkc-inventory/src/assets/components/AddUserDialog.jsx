@@ -33,6 +33,7 @@ export default function AddUserDialog({ open, onClose, onSubmit, warehouses = []
       role: "",
       warehouse: "",
     });
+    
   };
 
   return (
@@ -101,8 +102,8 @@ export default function AddUserDialog({ open, onClose, onSubmit, warehouses = []
                 <MenuItem value="">No warehouses yet</MenuItem>
               ) : (
                 warehouses.map((w) => (
-                  <MenuItem key={w} value={w}>
-                    {w}
+                  <MenuItem key={w.label} value={w.value}>
+                    {w.label}
                   </MenuItem>
                 ))
               )}
