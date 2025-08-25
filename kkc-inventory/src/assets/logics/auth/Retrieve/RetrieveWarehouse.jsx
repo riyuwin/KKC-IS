@@ -1,4 +1,4 @@
-import { PortRetrieveWarehouse } from '../../api_ports/api';
+import { PortRetrieveWarehouse } from '../../../api_ports/api';
 import Swal from 'sweetalert2';
 
 export default async function RetrieveWarehouse() {    

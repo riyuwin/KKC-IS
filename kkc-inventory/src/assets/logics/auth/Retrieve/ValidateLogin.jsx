@@ -1,4 +1,4 @@
-import { PortLogin } from '../../api_ports/api';
+import { PortLogin } from '../../../api_ports/api';
 import Swal from 'sweetalert2';
 
 export default async function ValidateLogin(email, password, navigate) {
@@ -25,9 +25,9 @@ export default async function ValidateLogin(email, password, navigate) {
 
         localStorage.setItem("user", JSON.stringify(data)); 
 
-        if (data.user_level === "Admin") {
+        if (data.role === "Admin") {
             setTimeout(() => navigate('/'), 2000);  
-        } else if (data.user_level === "Warehouse") { 
+        } else if (data.role === "Warehouse") { 
             setTimeout(() => navigate('/'), 2000); 
             // To Do
         } 

@@ -1,4 +1,4 @@
-import { PortRetrieveAccounts } from '../../api_ports/api';
+import { PortRetrieveAccounts } from '../../../api_ports/api';
 import Swal from 'sweetalert2';
 
 export default async function RetrieveAccounts() {    

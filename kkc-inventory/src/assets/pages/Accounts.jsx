@@ -5,10 +5,10 @@ import { useTheme } from "@mui/material/styles";
 import AddWarehouseDialog from "../components/AddWarehouseDialog";
 import AddUserDialog from "../components/AddUserDialog";
 import SortableHeader, { getComparator, stableSort } from "../components/SortableHeader";
-import InsertWarehouse from "../logics/auth/InsertWarehouse";
-import RetrieveWarehouse from "../logics/auth/RetrieveWarehouse";
-import InsertAccount from "../logics/auth/InsertAccount";
-import RetrieveAccounts from "../logics/auth/RetrieveAccounts";
+import InsertWarehouse from "../logics/auth/Insert/InsertWarehouse";
+import RetrieveWarehouse from "../logics/auth/Retrieve/RetrieveWarehouse";
+import InsertAccount from "../logics/auth/Insert/InsertAccount";
+import RetrieveAccounts from "../logics/auth/Retrieve/RetrieveAccounts";
 
 // A11y Helpers for Tabs
 function a11yProps(index) {

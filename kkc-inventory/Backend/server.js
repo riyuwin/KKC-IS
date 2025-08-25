@@ -188,10 +188,10 @@ app.post("/login", (req, res) => {
                 console.error("Session not initialized!");
             }
 
-            req.session.user = { account_id: user.account_id, email: user.email,  user_level: user.user_level };
+            req.session.user = { account_id: user.account_id, email: user.email,  role: user.role };
             console.log("Session Created:", req.session.user);
 
-            res.json({ message: "Login successful", account_id: user.account_id, email: user.email, user_level: user.user_level });
+            res.json({ message: "Login successful", account_id: user.account_id, email: user.email, role: user.role });
         });
     });
 });
