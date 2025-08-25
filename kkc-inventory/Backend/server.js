@@ -253,8 +253,7 @@ app.post("/insert_warehouse", (req, res) => {
                             res.status(500).json({ error: err.message });
                         });
                     }
-
-                    // Commit the transaction
+ 
                     connection.commit((err) => {
                         if (err) {
                             console.error("Commit Error:", err);
