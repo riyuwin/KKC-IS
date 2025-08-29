@@ -2,17 +2,13 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Box, Typography, Tabs, Tab, Paper, Button, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, IconButton, Stack, useMediaQuery } from "@mui/material";
 import { Edit as EditIcon, Delete as DeleteIcon, Add as AddIcon } from "@mui/icons-material";
 import { useTheme } from "@mui/material/styles";
-import AddWarehouseDialog from "../components/AddWarehouseDialog";
-import AddUserDialog from "../components/AddUserDialog";
-import SortableHeader, { getComparator, stableSort } from "../components/SortableHeader";
-import InsertWarehouse from "../logics/auth/Insert/InsertWarehouse";
-import RetrieveWarehouse from "../logics/auth/Retrieve/RetrieveWarehouse";
-import InsertAccount from "../logics/auth/Insert/InsertAccount";
-import RetrieveAccounts from "../logics/auth/Retrieve/RetrieveAccounts";
-import EditWarehouseDialog from "../components/EditWarehouseDialog";
-import UpdateWarehouse from "../logics/auth/Update/UpdateWarehouse";
-import DeleteWarehouse from "../logics/auth/Delete/DeleteWarehouse";
-import EditUserDialog from "../components/EditUserDialog";
+import SortableHeader, { getComparator, stableSort } from "../components/SortableHeader";  
+
+import WarehouseDialog from "../components/WarehouseDialog";
+import UserDialog from "../components/UserDialog"; 
+
+import { RetrieveWarehouse, InsertWarehouse, UpdateWarehouse, DeleteWarehouse } from "../logics/admin/ManageWarehouse";
+import { DeleteAccount, InsertAccount,  RetrieveAccounts, UpdateAccount } from "../logics/auth/ManageAccount"; 
 
 // A11y Helpers for Tabs
 function a11yProps(index) {
@@ -43,34 +39,34 @@ const USER_COLUMNS = [
 ];
 
 function Accounts() {
+  // UI Variables
   const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down("md")); 
-
-  const [warehouses, setWarehouses] = useState([]);
-  const [users, setUsers] = useState([]); 
-
+  const isMobile = useMediaQuery(theme.breakpoints.down("md"));  
   const [tab, setTab] = useState(0);
 
   // Dialog/Modal State
-  const [openAddWarehouse, setOpenAddWarehouse] = useState(false);
-  const [openAddUser, setOpenAddUser] = useState(false);
+  const [openWarehouse, setOpenWarehouse] = useState(false);
+  const [openUserDialog, setOpenUserDialog] = useState(false);
+  const [modalType, setModalType] = useState(null);   
 
-  //const warehouseNames = useMemo(() => warehouses.map((w) => w.warehouse_name), [warehouses]);
-  const warehouseNames = useMemo(
-    () => warehouses.map((w) => ({ label: w.warehouse_name, value: w.warehouse_id })),
-    [warehouses]
-  );  
+  // Dynamics Variable States
+  const [warehouses, setWarehouses] = useState([]);
+  const [users, setUsers] = useState([]);  
+  const warehouseNames = useMemo(() => warehouses.map((w) => ({ label: w.warehouse_name, value: w.warehouse_id })), [warehouses]);  
+  const [selectedWarehouse, setSelectedWarehouse] = useState(null); 
+  const [selectedUser, setSelectedUser] = useState(null);
 
+  // Fetcher
   useEffect(() => {
     const fetchWarehouses = async () => {
       const { data } = await RetrieveWarehouse();
       setWarehouses(data);
     };
 
-    fetchWarehouses(); // initial call
+    fetchWarehouses();  
 
-    const interval = setInterval(fetchWarehouses, 2000); // every 5s
-    return () => clearInterval(interval); // cleanup
+    const interval = setInterval(fetchWarehouses, 2000);  
+    return () => clearInterval(interval);  
   }, []);
 
   useEffect(() => {
@@ -83,46 +79,54 @@ function Accounts() {
 
     const interval = setInterval(fetchUsers, 2000);
     return () => clearInterval(interval);
-  }, []);
+  }, []); 
  
-  const [selectedWarehouse, setSelectedWarehouse] = useState(null);
-  const [openEditDialog, setOpenEditDialog] = useState(false);
 
-  const handleEditDialogOpen = (warehouse) => {
-    setSelectedWarehouse(warehouse); // store selected warehouse details
-    setOpenEditDialog(true);
+  // Managers
+  const handleManageWarehouse = (payload, modal_type) => { 
+    if (modal_type == "Add"){
+      InsertWarehouse(payload);
+    } else if (modal_type == "Edit") {
+      UpdateWarehouse(payload);
+    }
+  }; 
+
+  const handleManageUser = (payload, modal_type) => {  
+    console.log("Test Add: ", payload);
+    if (modal_type == "Add"){
+      InsertAccount(payload);
+    } else if (modal_type == "Edit") { 
+      UpdateAccount(payload);
+    }
+  };  
+  
+  const handleUserDialogOpen = (type, user = null, warehouse = null) => {
+    if (type === "Edit" && warehouse) { 
+        setSelectedWarehouse(warehouse);
+        setSelectedUser(user);  
+    }
+
+    setModalType(type);
+    setOpenUserDialog(true);
   };
+  
+  const handleWarehouseDialogOpen = (modal_type, warehouse = null) => {
+    if (modal_type === "Edit" && warehouse) {
+      setSelectedWarehouse(warehouse); 
+    }    
 
-  const handleDeleteDialogWarehouse = (warehouse_id) => {
-    console.log("Warehouse id: ", warehouse_id);
+    setModalType(modal_type); 
+    setOpenWarehouse(true); 
+  }; 
+
+  const handleDeleteDialogWarehouse = (warehouse_id) => { 
     DeleteWarehouse(warehouse_id); 
   }
 
-  const handleSubmit = (payload) => {
-    console.log("Edited warehouse data:", payload);
-
-    UpdateWarehouse(payload.warehouse_id, payload.warehouse_name, payload.location);
-    setOpenEditDialog(false);
-  }; 
-
-  const [openEdit, setOpenEdit] = useState(false);
-  const [selectedUser, setSelectedUser] = useState(null);
-
-  const handleEditUserClick = (user) => {
-    setSelectedUser(user);   // store the user to edit
-    setOpenEdit(true);       // open the dialog
-  };
-
-  const handleCloseEdit = () => {
-    setOpenEdit(false);
-    setSelectedUser(null);   // clear
-  };
-
-  const handleSubmitEdit = (payload) => {
-    onUpdateUser(payload);   // call API or parent handler
-    handleCloseEdit();
-  };
-
+  const handleDeleteDialogAccount = (account_id) => { 
+    DeleteAccount(account_id); 
+  } 
+  
   // Sort State Per Tab
   // Warehouse
   const [whOrderBy, setWhOrderBy] = useState("name");
@@ -131,22 +135,7 @@ function Accounts() {
   // Accounts/User
   const [userOrderBy, setUserOrderBy] = useState("fullName");
   const [userOrder, setUserOrder] = useState("asc");
-
-  // CRUD Handlers (front-end lang 'to)
-  const handleAddWarehouse = (payload) => {
-    const nextId = Math.max(0, ...warehouses.map((w) => w.id)) + 1;
-    //setWarehouses((prev) => [...prev, { id: nextId, ...payload }]);
-    InsertWarehouse(payload.name, payload.location);
-  };
-  const handleAddUser = (payload) => {
-    const nextId = Math.max(0, ...users.map((u) => u.id)) + 1;
-    // setUsers((prev) => [...prev, { id: nextId, ...payload }]);    
-    InsertAccount(payload.warehouse, payload.fullName, payload.username, payload.email, payload.password, payload.role);
-  };
-
-  const handleDeleteWarehouse = (id) => setWarehouses((prev) => prev.filter((w) => w.id !== id));
-  const handleDeleteUser = (id) => setUsers((prev) => prev.filter((u) => u.id !== id));
-
+ 
   // Sort handlers (tiny + generic) 
   const sortWarehouse = (property) => {
     const isAsc = whOrderBy === property && whOrder === "asc";
@@ -185,7 +174,9 @@ function Accounts() {
           <Button
             variant="contained"
             startIcon={<AddIcon />}
-            onClick={() => setOpenAddWarehouse(true)}
+            onClick={() => {
+              handleWarehouseDialogOpen("Add");
+            }}
             sx={{
               bgcolor: "#E67600",
               "&:hover": { bgcolor: "#f99f3fff" },
@@ -200,7 +191,9 @@ function Accounts() {
           <Button
             variant="contained"
             startIcon={<AddIcon />}
-            onClick={() => setOpenAddUser(true)}
+            onClick={() => {
+              handleUserDialogOpen("Add");
+            }}
             sx={{
               bgcolor: "#FA8201",
               "&:hover": { bgcolor: "#E67600" },
@@ -272,7 +265,7 @@ function Accounts() {
                       {Array.isArray(w.assignedUsers) ? w.assignedUsers.join(", ") : w.assignedUsers}
                     </TableCell> */}
                     <TableCell align="right" sx={{ textAlign: "center" }}>
-                      <IconButton size="small" color="primary" onClick={() => handleEditDialogOpen(w)}>
+                      <IconButton size="small" color="primary" onClick={() => handleWarehouseDialogOpen("Edit", w)}>
                         <EditIcon fontSize="small" />
                       </IconButton>
                       <IconButton size="small" color="error" onClick={() => handleDeleteDialogWarehouse(w.warehouse_id)}>
@@ -333,37 +326,34 @@ function Accounts() {
                     fontSize: "0.95rem",        // body a hair smaller than header
                   },
                 }}>
-                {sortedUsers.map((u, index) => (
-                  <TableRow key={u.id} hover>
-                    <TableCell sx={{ textAlign: "center" }}>{index + 1}</TableCell>
-                    <TableCell sx={{ textAlign: "center" }}>{u.fullname}</TableCell>
-                    {(() => {
-                      const wh = warehouses.find(w => w.warehouse_id === u.warehouse_id);
-                      return wh ? (
-                        <>
-                          <TableCell sx={{ textAlign: "center" }}>{wh.location}</TableCell>
-                          <TableCell sx={{ textAlign: "center" }}>{wh.warehouse_name}</TableCell>
-                        </>
-                      ) : null;
-                    })()}
-                    <TableCell sx={{ textAlign: "center" }}>{u.role}</TableCell>
-                    <TableCell align="right" sx={{ textAlign: "center" }}>
-                      <IconButton size="small" color="primary" onClick={() => handleEditUserClick(u)}>
-                        <EditIcon fontSize="small" />
-                      </IconButton>
-                      <IconButton size="small" color="error" onClick={() => handleDeleteUser(u.id)}>
-                        <DeleteIcon fontSize="small" />
-                      </IconButton>
-                    </TableCell>
-                  </TableRow>
-                ))}
-                {users.length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={5} align="center" sx={{ py: 4, color: "text.secondary" }}>
-                      No users yet.
-                    </TableCell>
-                  </TableRow>
-                )}
+                {sortedUsers.map((u, index) => {
+                  const wh = warehouses.find(w => w.warehouse_id === u.warehouse_id);
+
+                  return (
+                    <TableRow key={u.id} hover>
+                      <TableCell sx={{ textAlign: "center" }}>{index + 1}</TableCell>
+                      <TableCell sx={{ textAlign: "center" }}>{u.fullname}</TableCell>
+                      {(() => {
+                        return wh ? (
+                          <>
+                            <TableCell sx={{ textAlign: "center" }}>{wh.location}</TableCell>
+                            <TableCell sx={{ textAlign: "center" }}>{wh.warehouse_name}</TableCell>
+                          </>
+                        ) : null;
+                      })()}
+                      <TableCell sx={{ textAlign: "center" }}>{u.role}</TableCell>
+                      <TableCell align="right" sx={{ textAlign: "center" }}>
+                        <IconButton size="small" color="primary" onClick={() => handleUserDialogOpen("Edit", u, wh)}>
+                          <EditIcon fontSize="small" />
+                        </IconButton>
+                        <IconButton size="small" color="error" onClick={() => handleDeleteDialogAccount(u.account_id)}>
+                          <DeleteIcon fontSize="small" />
+                        </IconButton>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+
               </TableBody>
             </Table>
           </TableContainer>
@@ -371,39 +361,29 @@ function Accounts() {
       </Paper>
 
       {/* Dialogs/Modals */}
-      <AddWarehouseDialog
-        open={openAddWarehouse}
-        onClose={() => setOpenAddWarehouse(false)}
+      <WarehouseDialog
+        open={openWarehouse}
+        onClose={() => setOpenWarehouse(false)}
         onSubmit={(payload) => {
-          handleAddWarehouse(payload);
-          setOpenAddWarehouse(false);
-        }}
+          handleManageWarehouse(payload, modalType);  
+          setOpenWarehouse(false); 
+        }} 
+        warehouse={modalType === "Add" ? warehouseNames : selectedWarehouse}
+        modal_type={modalType}
       />
 
-      <EditUserDialog
-        open={openEdit}
-        onClose={handleCloseEdit}
-        onSubmit={handleSubmitEdit}
-        warehouses={warehouses}
-        user={selectedUser}
-      />
-
-      <AddUserDialog
-        open={openAddUser}
-        onClose={() => setOpenAddUser(false)}
-        warehouses={warehouseNames}
+      <UserDialog
+        open={openUserDialog}
+        onClose={() => setOpenUserDialog(false)}
+        warehouses={modalType === "Add" ? warehouseNames : warehouses}
+        user={modalType === "Edit" ? selectedUser : null}
         onSubmit={(payload) => {
-          handleAddUser(payload);
-          setOpenAddUser(false);
+          handleManageUser(payload, modalType); 
+          setOpenUserDialog(false); 
         }}
-      />
-
-      <EditWarehouseDialog
-        open={openEditDialog}
-        onClose={() => setOpenEditDialog(false)}
-        onSubmit={handleSubmit}
-        warehouse={selectedWarehouse}
-      />
+        modal_type={modalType}
+      />  
+ 
     </Box>
   );
 }

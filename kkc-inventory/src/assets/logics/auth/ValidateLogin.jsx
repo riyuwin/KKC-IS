@@ -1,7 +1,7 @@
-import { PortLogin } from '../../../api_ports/api';
+import { PortLogin } from '../../api_ports/api';
 import Swal from 'sweetalert2';
 
-export default async function ValidateLogin(email, password, navigate) {
+export async function ValidateLogin(email, password, navigate) {
     try {
         const response = await fetch(PortLogin, {
             method: "POST",

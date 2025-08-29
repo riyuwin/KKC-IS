@@ -45,43 +45,34 @@ app.use(session({
         httpOnly: true,
         sameSite: "lax"
     }
-}));
+})); 
 
-app.get("/accounts_id", (req, res) => {
-    const { accountId } = req.query;
-
-    if (!accountId) {
-        return res.status(400).json({ error: "accountId is required" });
-    }
-
-    // Use parameterized query to prevent SQL injection
-    const query = "SELECT * FROM basic_information WHERE account_id = ?";
-    db.query(query, [accountId], (err, results) => {
-        if (err) {
+function executeQuery(query, params, res, messageContent) {
+    db.getConnection((err, connection) => {
+        if (err) { 
             return res.status(500).json({ error: err.message });
         }
-        res.json(results);
-    });
-});
 
-app.get("/accounts", (req, res) => {
-    db.query("SELECT * FROM accounts", (err, results) => {
-        if (err) return res.status(500).json({ error: err });
-        res.json(results);
-    });
-});
+        connection.query(query, params, (err, result) => {
+            connection.release();
 
-app.get("/basic_information", (req, res) => {
-    db.query("SELECT * FROM basic_information", (err, results) => {
-        if (err) return res.status(500).json({ error: err });
-        res.json(results);
-    });
-});
+            if (err) { 
+                return res.status(500).json({ error: err.message });
+            }
 
+            res.json({
+                message: messageContent,
+                affectedRows: result.affectedRows,
+                insertId: result.insertId || null 
+            });
+        });
+    });
+}    
+ 
+// Auth ->>>>>>>>>>>>
 app.post("/create_account", (req, res) => {
     const { warehouse_id, fullname, username, email, password, role } = req.body;
-
-    // Check if the email already exists
+ 
     db.query("SELECT * FROM accounts WHERE email = ?", [email], (err, results) => {
         if (err) {
             console.error("Email Check Error:", err);
@@ -91,8 +82,7 @@ app.post("/create_account", (req, res) => {
         if (results.length > 0) {
             return res.status(400).json({ error: "Email is already taken." });
         }
-
-        // Hash password
+ 
         bcrypt.hash(password, 10, (err, hashedPassword) => {
             if (err) {
                 console.error("Password Hashing Error:", err);
@@ -105,53 +95,65 @@ app.post("/create_account", (req, res) => {
                 VALUES (?, ?, ?, ?, ?, ?, NOW())
             `;
 
-            db.getConnection((err, connection) => {
-                if (err) {
-                    console.error("Connection Error:", err);
-                    return res.status(500).json({ error: err.message });
-                }
+            const params = [warehouse_id, fullname, username, email, hashedPassword, role];
 
-                connection.beginTransaction((err) => {
-                    if (err) {
-                        console.error("Transaction Error:", err);
-                        connection.release();
-                        return res.status(500).json({ error: err.message });
-                    }
-
-                    connection.query(
-                        insertAccountQuery,
-                        [warehouse_id, fullname, username, email, hashedPassword, role],
-                        (err, result) => {
-                            if (err) {
-                                console.error("Account Insertion Error:", err);
-                                return connection.rollback(() => {
-                                    connection.release();
-                                    res.status(500).json({ error: err.message });
-                                });
-                            }
-
-                            connection.commit((err) => {
-                                if (err) {
-                                    console.error("Commit Error:", err);
-                                    return connection.rollback(() => {
-                                        connection.release();
-                                        res.status(500).json({ error: err.message });
-                                    });
-                                }
-
-                                connection.release();
-                                res.json({
-                                    message: "Account created successfully",
-                                    id: result.insertId
-                                });
-                            });
-                        }
-                    );
-                });
-            });
+            executeQuery(insertAccountQuery, params, res, "Account created successfully");
         });
     });
 });
+ 
+app.get("/accounts", (req, res) => {
+    db.query("SELECT * FROM accounts", (err, results) => {
+        if (err) return res.status(500).json({ error: err });
+        res.json(results);
+    });
+}); 
+ 
+app.put("/accounts", (req, res) => {
+    const { account_id, warehouse_id, fullname, username, email, password, role, added_at } = req.body; 
+
+    let updateAccountQuery;
+    let params;
+    const messageContent = "Account updated successfully"; 
+
+    if (password && password.trim() !== "") { 
+        bcrypt.hash(password, 10, (err, hashedPassword) => {
+            if (err) {
+                console.error("Password Hashing Error:", err);
+                return res.status(500).json({ error: "Failed to hash password." });
+            }
+
+            updateAccountQuery = `
+                UPDATE accounts  
+                SET warehouse_id = ?, fullname = ?, username = ?, email = ?, password = ?, role = ?, added_at = ?, updated_at = NOW()
+                WHERE account_id = ?
+            `;
+            params = [warehouse_id, fullname, username, email, hashedPassword, role, added_at, account_id];
+            executeQuery(updateAccountQuery, params, res, messageContent);
+        });
+    } else { 
+        updateAccountQuery = `
+            UPDATE accounts  
+            SET warehouse_id = ?, fullname = ?, username = ?, email = ?, role = ?, added_at = ?, updated_at = NOW()
+            WHERE account_id = ?
+        `;
+        params = [warehouse_id, fullname, username, email, role, added_at, account_id];
+        executeQuery(updateAccountQuery, params, res, messageContent);
+    }
+});  
+
+app.delete("/accounts", (req, res) => {
+    const { account_id } = req.body;
+
+    if (!account_id) {
+        return res.status(400).json({ error: "Account ID is required." });
+    }
+
+    const deleteAccountQuery = "DELETE FROM accounts WHERE account_id = ?";
+
+    executeQuery(deleteAccountQuery, [account_id], res, "Account deleted successfully!");
+});
+
 
 app.post("/login", (req, res) => {
     console.log("Incoming body:", req.body);
@@ -194,8 +196,7 @@ app.post("/login", (req, res) => {
             res.json({ message: "Login successful", account_id: user.account_id, email: user.email, role: user.role });
         });
     });
-});
-
+}); 
 
 app.get("/session", (req, res) => {
     if (req.session.user) {
@@ -220,40 +221,34 @@ app.post("/logout", (req, res) => {
         res.json({ message: "Logged out successfully" });
     });
 });
+ 
+// Warehouse ->>>>>>>>>>>>
+app.post("/warehouse", (req, res) => {
+    const { warehouse_name, location } = req.body;
 
-app.post("/insert_warehouse", (req, res) => {
-    const { warehouseName, warehouseLocation } = req.body;
+    if (!warehouse_name || !location) {
+        return res.status(400).json({ error: "Missing warehouse name or location." });
+    }
 
-    const insertWarehouseQuery = `INSERT INTO warehouse (warehouse_name, location, added_at) VALUES (?, ?, NOW())`;
+    const insertWarehouseQuery = `
+        INSERT INTO warehouse (warehouse_name, location, added_at)
+        VALUES (?, ?, NOW())
+    `;
 
-    db.getConnection((err, connection) => {
-        if (err) {
-            console.error("Connection Error:", err);
-            return res.status(500).json({ error: err.message });
-        }
-
-        connection.query(
-            insertWarehouseQuery,
-            [warehouseName, warehouseLocation],
-            (err, result) => {
-                connection.release(); 
-
-                if (err) {
-                    console.error("Warehouse Insertion Error:", err);
-                    return res.status(500).json({ error: err.message });
-                }
-
-                res.json({
-                    message: "Warehouse added successfully",
-                    id: result.insertId
-                });
-            }
-        );
-    });
+    executeQuery(
+        insertWarehouseQuery,
+        [warehouse_name, location],
+        res,
+        "Warehouse added successfully"
+    );
 }); 
 
-app.post("/update_warehouse", (req, res) => {
-    const { warehouseId, warehouseName, warehouseLocation } = req.body;
+app.put("/warehouse", (req, res) => {
+    const { warehouse_id, warehouse_name, location } = req.body;
+
+    if (!warehouse_id || !warehouse_name || !location) {
+        return res.status(400).json({ error: "Missing warehouse ID, name, or location." });
+    }
 
     const updateWarehouseQuery = `
         UPDATE warehouse 
@@ -261,69 +256,33 @@ app.post("/update_warehouse", (req, res) => {
         WHERE warehouse_id = ?
     `;
 
-    db.getConnection((err, connection) => {
-        if (err) {
-            console.error("Connection Error:", err);
-            return res.status(500).json({ error: err.message });
-        }
-
-        connection.query(
-            updateWarehouseQuery,
-            [warehouseName, warehouseLocation, warehouseId],
-            (err, result) => {
-                connection.release();
-
-                if (err) {
-                    console.error("Warehouse Update Error:", err);
-                    return res.status(500).json({ error: err.message });
-                }
-
-                res.json({
-                    message: "Warehouse updated successfully",
-                    affectedRows: result.affectedRows
-                });
-            }
-        );
-    });
-});
-
-
-app.post("/delete_warehouse", (req, res) => {
+    executeQuery(
+        updateWarehouseQuery,
+        [warehouse_name, location, warehouse_id],
+        res,
+        "Warehouse updated successfully"
+    );
+}); 
+ 
+app.delete("/warehouse", (req, res) => {
     const { warehouseId } = req.body;
 
     if (!warehouseId) {
         return res.status(400).json({ error: "Warehouse ID is required." });
     }
- 
-    const deleteBurialAssistanceQuery = "DELETE FROM warehouse WHERE warehouse_id = ?";
- 
-    db.query(deleteBurialAssistanceQuery, [warehouseId], (err, results) => {
-        if (err) {
-            console.error("Database Error:", err);
-            return res.status(500).json({ error: "Internal server error." });
-        }
 
-        if (results.affectedRows === 0) {
-            return res.status(404).json({ error: "Warehouse not found." });
-        }
+    const deleteWarehouseQuery = "DELETE FROM warehouse WHERE warehouse_id = ?";
 
-        res.json({ message: "Warehouse deleted successfully!" });
-    });
+    executeQuery(deleteWarehouseQuery, [warehouseId], res, "Warehouse deleted successfully!");
 });
 
-app.get("/retrieve_warehouse", (req, res) => {
+
+app.get("/warehouse", (req, res) => {
     db.query("SELECT * FROM warehouse", (err, results) => {
         if (err) return res.status(500).json({ error: err });
         res.json(results);
     });
-});
-
-app.get("/retrieve_accounts", (req, res) => {
-    db.query("SELECT * FROM accounts", (err, results) => {
-        if (err) return res.status(500).json({ error: err });
-        res.json(results);
-    });
-});
+}); 
 
 // PRODUCTS HELPERS 
 function computeStockStatus(stock) {

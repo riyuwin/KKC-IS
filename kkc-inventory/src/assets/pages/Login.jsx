@@ -6,7 +6,7 @@ import { useTheme } from "@mui/material/styles";
 import bgImage from "../../images/login-bg.jpg";
 import logo from "../../images/kkc-logo.png"; 
 import { useNavigate } from "react-router-dom";
-import ValidateLogin from "../logics/auth/Retrieve/ValidateLogin";
+import { ValidateLogin } from "../logics/auth/ValidateLogin";
 
 const LayoutTextField = styled(TextField)(({ theme }) => ({
     "& .MuiInputBase-root": {
