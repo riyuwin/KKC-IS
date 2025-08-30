@@ -13,3 +13,6 @@ export const PortProducts = `${import.meta.env.VITE_API_PRODUCTS}`;
 
 //SUPPLIERS
 export const PortSuppliers = `${import.meta.env.VITE_API_SUPPLIERS}`;
+
+// PURCHASES
+export const PortPurchases = `${import.meta.env.VITE_API_PURCHASES}`;
