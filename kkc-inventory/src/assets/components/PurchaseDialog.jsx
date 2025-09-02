@@ -12,7 +12,7 @@ function peso(n) {
   return num.toLocaleString("en-PH", { style: "currency", currency: "PHP", minimumFractionDigits: 2 });
 }
 
-// ⭐ CHANGE: Use local “today” for default date
+// Default Date: Today
 function todayYYYYMMDD() {
   const d = new Date();
   const pad = (v) => String(v).padStart(2, "0");
@@ -51,32 +51,30 @@ export default function PurchaseDialog({
     payment_status: "Unpaid",
   });
 
-  // ⭐ CHANGE: consistent field heights + reserve helper-text space so rows don't jump
+  // Consistent field heights + reserve helper-text space so rows don't jump
   const fieldSx = {
     "& .MuiInputBase-root": { minHeight: 40 },
     "& .MuiFormHelperText-root": { minHeight: 20 },
     "& .MuiFormLabel-root": { whiteSpace: "nowrap" },
   };
 
-  // ---------- initialize form on open ----------
+  // Initialize form on open 
   useEffect(() => {
     if (!open) return;
     setForm({
-      // ⭐ CHANGE: default to today if no date passed in
       purchase_date: initialData.purchase_date || todayYYYYMMDD(),
       supplier_id: initialData.supplier_id || "",
       product_id: initialData.product_id || "",
       quantity: initialData.quantity ?? "",
       unit_cost: initialData.unit_cost ?? "",
       total_cost: initialData.total_cost ?? "",
-      // ⭐ CHANGE: default statuses instead of empty strings
       purchase_status: initialData.purchase_status || "Pending",
       qty_received: initialData.qty_received ?? "",
       payment_status: initialData.purchase_payment_status || "Unpaid",
     });
   }, [open, initialData]);
 
-  // ---------- filter products by selected supplier ----------
+  // Filter Products by selected Supplier
   const productsForSupplier = useMemo(() => {
     if (!form.supplier_id) return [];
     return products.filter(p => String(p.supplier_id) === String(form.supplier_id));
@@ -88,15 +86,14 @@ export default function PurchaseDialog({
     [productsForSupplier, form.product_id]
   );
 
-  // keep unit cost in sync with selected product
+  // Keep unit cost in sync with selected product
   useEffect(() => {
     if (!open) return;
     if (!selectedProduct) return;
     setForm(f => ({ ...f, unit_cost: selectedProduct?.cost_price ?? "" }));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.product_id, selectedProduct?.cost_price, open]);
 
-  // reset dependent fields when supplier changes
+  // Reset dependent fields when supplier changes
   useEffect(() => {
     if (!open) return;
     const stillValid =
@@ -105,10 +102,9 @@ export default function PurchaseDialog({
     if (!stillValid) {
       setForm(f => ({ ...f, product_id: "", unit_cost: "" }));
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.supplier_id, open]);
 
-  // ---------- totals, remaining, and auto-complete delivery status ----------
+  // Totals, remaining, and auto-complete delivery status
   const qty = Number(form.quantity || 0);
   const recv = Number(form.qty_received || 0);
   const ucost = Number(form.unit_cost || 0);
@@ -117,16 +113,14 @@ export default function PurchaseDialog({
 
   useEffect(() => {
     setForm(f => ({ ...f, total_cost: computedTotal }));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.quantity, form.unit_cost]);
 
-  // ⭐ CHANGE: auto set delivery status based on qty vs received
+  // Auto set delivery status based on qty vs received
   useEffect(() => {
     const want = qty > 0 && recv === qty ? "Completed" : "Pending";
     if (form.purchase_status !== want) {
       setForm(f => ({ ...f, purchase_status: want }));
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.quantity, form.qty_received]);
 
   const disabled = mode === "view";
@@ -135,7 +129,6 @@ export default function PurchaseDialog({
     <Dialog
       open={open}
       onClose={onClose}
-      // portrait-ish, fixed content width that fits 3 columns cleanly
       maxWidth={false}
       PaperProps={{
         sx: {
@@ -163,11 +156,6 @@ export default function PurchaseDialog({
             gap: 2,
           }}
         >
-          {/* ⭐ CHANGE: REQUIRED SEQUENCE START
-              1) Date
-              2) Supplier
-              3) Product
-          */}
           <TextField
             label="Date"
             type="date"
@@ -231,10 +219,6 @@ export default function PurchaseDialog({
             ))}
           </TextField>
 
-          {/* 4) Qty. Ordered
-              5) Unit Cost
-              6) Total Cost
-          */}
           <TextField
             label="Qty. Ordered"
             size="small"
@@ -271,10 +255,6 @@ export default function PurchaseDialog({
             sx={fieldSx}
           />
 
-          {/* 7) Qty. Received
-              8) Delivery Status (auto)
-              9) Payment Status
-          */}
           <TextField
             label="Qty. Received"
             size="small"
@@ -316,7 +296,6 @@ export default function PurchaseDialog({
             {PS.map(p => <MenuItem key={p.value} value={p.value}>{p.label}</MenuItem>)}
           </TextField>
 
-          {/* 10) Remaining + STATUS CHIP BESIDE IT (kept) */}
           <TextField
             label="Remaining Products to be Received"
             size="small"
@@ -327,7 +306,6 @@ export default function PurchaseDialog({
             sx={fieldSx}
           />
 
-          {/* ⭐ CHANGE: STATUS CHIP kept and shown BESIDE Remaining */}
           <Box
             sx={{
               display: "flex",
@@ -343,7 +321,6 @@ export default function PurchaseDialog({
             />
           </Box>
 
-          {/* filler to complete third column in last row, keeping the grid rigid */}
           <Box />
         </Box>
       </DialogContent>
