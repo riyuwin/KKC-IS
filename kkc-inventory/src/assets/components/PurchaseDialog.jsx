@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
   Dialog, DialogTitle, DialogContent, DialogActions,
-  IconButton, Grid, TextField, MenuItem, Button, InputAdornment, Stack, Chip
+  IconButton, TextField, MenuItem, Button, InputAdornment, Stack, Chip, Box
 } from "@mui/material";
 import { MdClose } from "react-icons/md";
 
@@ -10,6 +10,13 @@ function peso(n) {
   const num = Number(n);
   if (Number.isNaN(num)) return n;
   return num.toLocaleString("en-PH", { style: "currency", currency: "PHP", minimumFractionDigits: 2 });
+}
+
+// ⭐ CHANGE: Use local “today” for default date
+function todayYYYYMMDD() {
+  const d = new Date();
+  const pad = (v) => String(v).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
 const DS = [
@@ -44,16 +51,25 @@ export default function PurchaseDialog({
     payment_status: "Unpaid",
   });
 
+  // ⭐ CHANGE: consistent field heights + reserve helper-text space so rows don't jump
+  const fieldSx = {
+    "& .MuiInputBase-root": { minHeight: 40 },
+    "& .MuiFormHelperText-root": { minHeight: 20 },
+    "& .MuiFormLabel-root": { whiteSpace: "nowrap" },
+  };
+
   // ---------- initialize form on open ----------
   useEffect(() => {
     if (!open) return;
     setForm({
-      purchase_date: initialData.purchase_date || "",
+      // ⭐ CHANGE: default to today if no date passed in
+      purchase_date: initialData.purchase_date || todayYYYYMMDD(),
       supplier_id: initialData.supplier_id || "",
       product_id: initialData.product_id || "",
       quantity: initialData.quantity ?? "",
       unit_cost: initialData.unit_cost ?? "",
       total_cost: initialData.total_cost ?? "",
+      // ⭐ CHANGE: default statuses instead of empty strings
       purchase_status: initialData.purchase_status || "Pending",
       qty_received: initialData.qty_received ?? "",
       payment_status: initialData.purchase_payment_status || "Unpaid",
@@ -63,9 +79,7 @@ export default function PurchaseDialog({
   // ---------- filter products by selected supplier ----------
   const productsForSupplier = useMemo(() => {
     if (!form.supplier_id) return [];
-    return products.filter(
-      p => String(p.supplier_id) === String(form.supplier_id)
-    );
+    return products.filter(p => String(p.supplier_id) === String(form.supplier_id));
   }, [products, form.supplier_id]);
 
   // Selected product (from filtered list)
@@ -88,14 +102,13 @@ export default function PurchaseDialog({
     const stillValid =
       form.product_id &&
       productsForSupplier.some(p => String(p.product_id) === String(form.product_id));
-
     if (!stillValid) {
       setForm(f => ({ ...f, product_id: "", unit_cost: "" }));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.supplier_id, open]);
 
-  // ---------- totals & remaining ----------
+  // ---------- totals, remaining, and auto-complete delivery status ----------
   const qty = Number(form.quantity || 0);
   const recv = Number(form.qty_received || 0);
   const ucost = Number(form.unit_cost || 0);
@@ -107,18 +120,27 @@ export default function PurchaseDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.quantity, form.unit_cost]);
 
+  // ⭐ CHANGE: auto set delivery status based on qty vs received
+  useEffect(() => {
+    const want = qty > 0 && recv === qty ? "Completed" : "Pending";
+    if (form.purchase_status !== want) {
+      setForm(f => ({ ...f, purchase_status: want }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.quantity, form.qty_received]);
+
   const disabled = mode === "view";
 
   return (
     <Dialog
       open={open}
       onClose={onClose}
-      // ⭐ CHANGE: portrait-ish, fixed content width that comfortably fits 3 columns
+      // portrait-ish, fixed content width that fits 3 columns cleanly
       maxWidth={false}
       PaperProps={{
         sx: {
           borderRadius: 2,
-          width: { xs: '95vw', sm: 900 },      // ⭐ CHANGE: ~900px so 3 inputs per line fit nicely
+          width: { xs: '95vw', sm: 900 },
           maxWidth: '100%',
           maxHeight: '92vh',
           display: 'flex',
@@ -133,184 +155,197 @@ export default function PurchaseDialog({
       </DialogTitle>
 
       <DialogContent dividers sx={{ px: 3, pt: 2.5, pb: 2.5 }}>
-        <Grid container spacing={2}>
-          {/* ⭐ CHANGE: 3-per-row at md (md=4), 2-per-row at sm (sm=6), 1-per-row at xs */}
-          {/* Row 1 */}
-          <Grid item xs={12} sm={6} md={4}>
-            <TextField
-              label="Date"
-              type="date"
+        {/* CSS Grid for rigid equal columns */}
+        <Box
+          sx={{
+            display: "grid",
+            gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr", md: "repeat(3, minmax(0, 1fr))" },
+            gap: 2,
+          }}
+        >
+          {/* ⭐ CHANGE: REQUIRED SEQUENCE START
+              1) Date
+              2) Supplier
+              3) Product
+          */}
+          <TextField
+            label="Date"
+            type="date"
+            size="small"
+            fullWidth
+            value={form.purchase_date}
+            onChange={(e) => setForm({ ...form, purchase_date: e.target.value })}
+            disabled={disabled}
+            InputLabelProps={{ shrink: true }}
+            helperText=" "
+            sx={fieldSx}
+          />
+
+          <TextField
+            select
+            label="Supplier"
+            size="small"
+            fullWidth
+            value={form.supplier_id}
+            onChange={(e) => {
+              const supplier_id = e.target.value;
+              setForm(f => ({
+                ...f,
+                supplier_id,
+                product_id: "",
+                unit_cost: ""
+              }));
+            }}
+            disabled={disabled}
+            helperText=" "
+            sx={fieldSx}
+          >
+            {suppliers.map(s => (
+              <MenuItem key={s.supplier_id} value={s.supplier_id}>{s.supplier_name}</MenuItem>
+            ))}
+          </TextField>
+
+          <TextField
+            select
+            label="Product"
+            size="small"
+            fullWidth
+            value={form.product_id}
+            onChange={(e) => {
+              const product_id = e.target.value;
+              const prod = productsForSupplier.find(p => String(p.product_id) === String(product_id));
+              setForm(f => ({
+                ...f,
+                product_id,
+                unit_cost: prod?.cost_price ?? ""
+              }));
+            }}
+            disabled={disabled || !form.supplier_id}
+            helperText=" "
+            sx={fieldSx}
+          >
+            {productsForSupplier.map(p => (
+              <MenuItem key={p.product_id} value={p.product_id}>
+                {p.product_name} {p.sku ? `(${p.sku})` : ""}
+              </MenuItem>
+            ))}
+          </TextField>
+
+          {/* 4) Qty. Ordered
+              5) Unit Cost
+              6) Total Cost
+          */}
+          <TextField
+            label="Qty. Ordered"
+            size="small"
+            fullWidth
+            type="number"
+            value={form.quantity}
+            onChange={(e) => setForm({ ...form, quantity: e.target.value })}
+            disabled={disabled}
+            inputProps={{ min: 0 }}
+            helperText=" "
+            sx={fieldSx}
+          />
+
+          <TextField
+            label="Unit Cost"
+            size="small"
+            fullWidth
+            type="number"
+            value={form.unit_cost}
+            onChange={(e) => setForm({ ...form, unit_cost: e.target.value })}
+            disabled={disabled || !form.product_id}
+            InputProps={{ startAdornment: <InputAdornment position="start">₱</InputAdornment> }}
+            helperText=" "
+            sx={fieldSx}
+          />
+
+          <TextField
+            label="Total Cost"
+            size="small"
+            fullWidth
+            value={peso(computedTotal)}
+            disabled
+            helperText=" "
+            sx={fieldSx}
+          />
+
+          {/* 7) Qty. Received
+              8) Delivery Status (auto)
+              9) Payment Status
+          */}
+          <TextField
+            label="Qty. Received"
+            size="small"
+            fullWidth
+            type="number"
+            value={form.qty_received}
+            onChange={(e) => setForm({ ...form, qty_received: e.target.value })}
+            disabled={disabled}
+            inputProps={{ min: 0, max: form.quantity || undefined }}
+            helperText=" "
+            sx={fieldSx}
+          />
+
+          <TextField
+            select
+            label="Delivery Status"
+            size="small"
+            fullWidth
+            value={form.purchase_status}
+            onChange={(e) => setForm({ ...form, purchase_status: e.target.value })}
+            disabled={disabled}
+            helperText=" "
+            sx={fieldSx}
+          >
+            {DS.map(d => <MenuItem key={d.value} value={d.value}>{d.label}</MenuItem>)}
+          </TextField>
+
+          <TextField
+            select
+            label="Payment Status"
+            size="small"
+            fullWidth
+            value={form.payment_status}
+            onChange={(e) => setForm({ ...form, payment_status: e.target.value })}
+            disabled={disabled}
+            helperText=" "
+            sx={fieldSx}
+          >
+            {PS.map(p => <MenuItem key={p.value} value={p.value}>{p.label}</MenuItem>)}
+          </TextField>
+
+          {/* 10) Remaining + STATUS CHIP BESIDE IT (kept) */}
+          <TextField
+            label="Remaining Products to be Received"
+            size="small"
+            fullWidth
+            value={remaining}
+            disabled
+            helperText=" "
+            sx={fieldSx}
+          />
+
+          {/* ⭐ CHANGE: STATUS CHIP kept and shown BESIDE Remaining */}
+          <Box
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "flex-start",
+              minHeight: 40,
+            }}
+          >
+            <Chip
               size="small"
-              fullWidth
-              value={form.purchase_date}
-              onChange={(e) => setForm({ ...form, purchase_date: e.target.value })}
-              disabled={disabled}
-              InputLabelProps={{ shrink: true }}
+              color={form.purchase_status === 'Completed' ? 'success' : 'warning'}
+              label={form.purchase_status === 'Completed' ? 'Completed' : 'Pending'}
             />
-          </Grid>
+          </Box>
 
-          <Grid item xs={12} sm={6} md={4}>
-            <TextField
-              select
-              label="Supplier"
-              size="small"
-              fullWidth
-              value={form.supplier_id}
-              onChange={(e) => {
-                const supplier_id = e.target.value;
-                setForm(f => ({
-                  ...f,
-                  supplier_id,
-                  product_id: "",   // ⭐ CHANGE: clear product on supplier change
-                  unit_cost: ""     // ⭐ CHANGE: clear unit cost on supplier change
-                }));
-              }}
-              disabled={disabled}
-              // ⭐ CHANGE: keep height consistent even when helper text appears
-              helperText=" "
-            >
-              {suppliers.map(s => (
-                <MenuItem key={s.supplier_id} value={s.supplier_id}>{s.supplier_name}</MenuItem>
-              ))}
-            </TextField>
-          </Grid>
-
-          <Grid item xs={12} sm={6} md={4}>
-            <TextField
-              select
-              label="Product"
-              size="small"
-              fullWidth
-              value={form.product_id}
-              onChange={(e) => {
-                const product_id = e.target.value;
-                const prod = productsForSupplier.find(p => String(p.product_id) === String(product_id));
-                setForm(f => ({
-                  ...f,
-                  product_id,
-                  unit_cost: prod?.cost_price ?? ""  // ⭐ CHANGE: update cost immediately on product change
-                }));
-              }}
-              disabled={disabled || !form.supplier_id}
-              helperText={!form.supplier_id ? "Select supplier first" : productsForSupplier.length === 0 ? "No products for this supplier" : " "}
-            >
-              {productsForSupplier.map(p => (
-                <MenuItem key={p.product_id} value={p.product_id}>
-                  {p.product_name} {p.sku ? `(${p.sku})` : ""}
-                </MenuItem>
-              ))}
-            </TextField>
-          </Grid>
-
-          {/* Row 2 */}
-          <Grid item xs={12} sm={6} md={4}>
-            <TextField
-              label="Quantity"
-              size="small"
-              fullWidth
-              type="number"
-              value={form.quantity}
-              onChange={(e) => setForm({ ...form, quantity: e.target.value })}
-              disabled={disabled}
-              inputProps={{ min: 0 }}
-              helperText=" "
-            />
-          </Grid>
-
-          <Grid item xs={12} sm={6} md={4}>
-            <TextField
-              label="Unit Cost"
-              size="small"
-              fullWidth
-              type="number"
-              value={form.unit_cost}
-              onChange={(e) => setForm({ ...form, unit_cost: e.target.value })}
-              disabled={disabled || !form.product_id}
-              InputProps={{
-                startAdornment: <InputAdornment position="start">₱</InputAdornment>,
-              }}
-              helperText={!form.product_id ? "Pick a product to auto-fill" : " "}
-            />
-          </Grid>
-
-          <Grid item xs={12} sm={6} md={4}>
-            <TextField
-              label="Total Cost"
-              size="small"
-              fullWidth
-              value={peso(computedTotal)}
-              disabled
-              helperText=" "
-            />
-          </Grid>
-
-          {/* Row 3 */}
-          <Grid item xs={12} sm={6} md={4}>
-            <TextField
-              select
-              label="Delivery Status"
-              size="small"
-              fullWidth
-              value={form.purchase_status}
-              onChange={(e) => setForm({ ...form, purchase_status: e.target.value })}
-              disabled={disabled}
-              helperText=" "
-            >
-              {DS.map(d => <MenuItem key={d.value} value={d.value}>{d.label}</MenuItem>)}
-            </TextField>
-          </Grid>
-
-          <Grid item xs={12} sm={6} md={4}>
-            <TextField
-              label="Qty. Received"
-              size="small"
-              fullWidth
-              type="number"
-              value={form.qty_received}
-              onChange={(e) => setForm({ ...form, qty_received: e.target.value })}
-              disabled={disabled}
-              inputProps={{ min: 0, max: form.quantity || undefined }}
-              helperText=" "
-            />
-          </Grid>
-
-          <Grid item xs={12} sm={6} md={4}>
-            <TextField
-              select
-              label="Payment Status"
-              size="small"
-              fullWidth
-              value={form.payment_status}
-              onChange={(e) => setForm({ ...form, payment_status: e.target.value })}
-              disabled={disabled}
-              helperText=" "
-            >
-              {PS.map(p => <MenuItem key={p.value} value={p.value}>{p.label}</MenuItem>)}
-            </TextField>
-          </Grid>
-
-          {/* Row 4 (2 items for clarity) */}
-          <Grid item xs={12} sm={6} md={8}>
-            <TextField
-              label="Remaining Products to be Received"
-              size="small"
-              fullWidth
-              value={remaining}
-              disabled
-              helperText=" "
-            />
-          </Grid>
-
-          <Grid item xs={12} sm={6} md={4}>
-            <Stack direction="row" spacing={2} alignItems="center" sx={{ height: '100%' }}>
-              <Chip
-                size="small"
-                color={remaining === 0 ? 'success' : 'warning'}
-                label={remaining === 0 ? 'Completed' : 'Pending'}
-              />
-            </Stack>
-          </Grid>
-        </Grid>
+          {/* filler to complete third column in last row, keeping the grid rigid */}
+          <Box />
+        </Box>
       </DialogContent>
 
       <DialogActions sx={{ px: 3, py: 2 }}>
