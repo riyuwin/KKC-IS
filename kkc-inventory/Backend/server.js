@@ -10,11 +10,11 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-/* const urlDB = `mysql://${process.env.MYSQLUSER}:${process.env.MYSQL_ROOT_PASSWORD}@${process.env.RAILWAY_TCP_PROXY_DOMAIN}:${process.env.RAILWAY_TCP_PROXY_PORT}/${process.env.MYSQL_DATABASE}`
+const urlDB = `mysql://${process.env.MYSQLUSER}:${process.env.MYSQL_ROOT_PASSWORD}@${process.env.RAILWAY_TCP_PROXY_DOMAIN}:${process.env.RAILWAY_TCP_PROXY_PORT}/${process.env.MYSQL_DATABASE}`
 
 const db = mysql.createPool(urlDB);
- */
 
+/* 
 const db = mysql.createPool({
     host: process.env.MYSQL_HOST,           // use private domain
     user: process.env.MYSQLUSER,
@@ -26,6 +26,7 @@ const db = mysql.createPool({
     queueLimit: 0
 });
 
+ */
 
 /* 
 For Localhost Debugging ---->>>
