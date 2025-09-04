@@ -15,17 +15,17 @@ app.use(express.urlencoded({ extended: true }));
 const db = mysql.createPool(urlDB);
  */
 
-
 const db = mysql.createPool({
-    host: process.env.RAILWAY_TCP_PROXY_DOMAIN,
+    host: process.env.MYSQL_HOST,           // use private domain
     user: process.env.MYSQLUSER,
     password: process.env.MYSQL_ROOT_PASSWORD,
     database: process.env.MYSQL_DATABASE,
-    port: process.env.RAILWAY_TCP_PROXY_PORT,
+    port: process.env.MYSQL_PORT,           // usually 3306
     waitForConnections: true,
     connectionLimit: 10,
     queueLimit: 0
 });
+
 
 /* 
 For Localhost Debugging ---->>>
