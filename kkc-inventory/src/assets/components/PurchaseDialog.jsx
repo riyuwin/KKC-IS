@@ -148,7 +148,7 @@ export default function PurchaseDialog({
       </DialogTitle>
 
       <DialogContent dividers sx={{ px: 3, pt: 2.5, pb: 2.5 }}>
-        {/* CSS Grid for rigid equal columns */}
+        {/* CSS Grid for equal columns */}
         <Box
           sx={{
             display: "grid",
@@ -315,7 +315,7 @@ export default function PurchaseDialog({
             }}
           >
             <Chip
-              size="small"
+              size="small" sx={{mt: -3}}
               color={form.purchase_status === 'Completed' ? 'success' : 'warning'}
               label={form.purchase_status === 'Completed' ? 'Completed' : 'Pending'}
             />
