@@ -216,7 +216,7 @@ function Products() {
     }
   };
 
-  // Header style
+  // Header Styling
   const headerCellSx = {
     p: 1.5,
     fontSize: "0.95rem",
@@ -225,6 +225,27 @@ function Products() {
     textAlign: "center",
     color: "white",
   };
+
+  // Body Styling
+  const bodyCellSx = {
+    textAlign: "center",
+    fontSize: "0.90rem",
+    py: 2,   // vertical padding
+    px: 1,   // horizontal padding
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+  };
+
+  // Wrap Cell Styling
+  const wrapCellSx = {
+    whiteSpace: "normal",
+    wordBreak: "break-word",
+    textOverflow: "clip",
+    overflow: "visible",
+    maxWidth: "none",
+    px: 1.25,
+  };
+
 
   return (
     <Box sx={{ p: 2, fontFamily: "Poppins, sans-serif" }}>
@@ -247,7 +268,17 @@ function Products() {
               </InputAdornment>
             ),
           }}
-          sx={{ maxWidth: 420, width: "100%" }}
+          sx={{
+            maxWidth: 520, width: "100%",
+            "& .MuiOutlinedInput-root": {
+              bgcolor: "background.paper",
+              borderRadius: 2,
+              "& .MuiOutlinedInput-notchedOutline": { borderColor: "rgba(0,0,0,0.25)" },
+              "&:hover .MuiOutlinedInput-notchedOutline": { borderColor: "rgba(0,0,0,0.45)" },
+              "&.Mui-focused .MuiOutlinedInput-notchedOutline": { borderColor: "#E67600", borderWidth: 2 },
+            },
+            "& input::placeholder": { opacity: 1 }, // visible placeholder
+          }}
         />
         <Button
           variant="contained"
@@ -298,7 +329,7 @@ function Products() {
               </TableRow>
             </TableHead>
 
-            <TableBody sx={{ "& .MuiTableCell-root": { textAlign: "center" } }}>
+            <TableBody sx={{ "& .MuiTableCell-root": bodyCellSx }}>
               {loading && (
                 <TableRow>
                   <TableCell colSpan={10} align="center">
@@ -325,7 +356,7 @@ function Products() {
                   <TableRow key={row.product_id ?? row.id ?? row.sku}>
                     <TableCell>{row.product_name}</TableCell>
                     <TableCell>{row.sku}</TableCell>
-                    <TableCell>{row.description}</TableCell>
+                    <TableCell sx={wrapCellSx}>{row.description}</TableCell>
                     <TableCell>{row.unit}</TableCell>
                     <TableCell>{Number(row.stock ?? 0)}</TableCell>
                     <TableCell>{row.cost_price === null || row.cost_price === "" ? "" : peso(row.cost_price)}</TableCell>

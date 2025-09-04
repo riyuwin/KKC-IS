@@ -1,9 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import {
-  Box, Paper, Typography, TextField, Button, InputAdornment,
-  Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
-  IconButton, CircularProgress, Tooltip, Chip, Stack
-} from "@mui/material";
+import { Box, Paper, Typography, TextField, Button, InputAdornment, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, IconButton, CircularProgress, Tooltip, Chip, Stack } from "@mui/material";
 import { MdSearch, MdAdd, MdVisibility, MdEdit, MdDelete } from "react-icons/md";
 import Swal from "sweetalert2";
 import PurchasesCRUD from "../logics/purchases/PurchasesCRUD";
@@ -17,6 +13,30 @@ function peso(n) {
   if (Number.isNaN(num)) return n;
   return num.toLocaleString("en-PH", { style: "currency", currency: "PHP", minimumFractionDigits: 2 });
 }
+
+function dateFormat(v) {
+  if (!v) return "";
+  if (typeof v === "string") {
+    const m = v.match(/^(\d{4}-\d{2}-\d{2})/);
+    if (m) {
+      const [y, mo, d] = m[1].split("-").map(Number);
+      const dt = new Date(y, mo - 1, d);
+      return dt.toLocaleDateString("en-US", {
+        month: "long",
+        day: "numeric",
+        year: "numeric",
+      });
+    }
+  }
+  const dt = new Date(v);
+  if (Number.isNaN(dt.getTime())) return String(v);
+  return dt.toLocaleDateString("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
 
 // SweetAlert helpers
 const swalFire = (opts) =>
@@ -37,9 +57,9 @@ const swalConfirm = async (title, text) => {
   return res.isConfirmed;
 };
 const swalSuccess = (text) => swalFire({ icon: "success", title: "Success", text, timer: 1400, showConfirmButton: false });
-const swalError   = (text) => swalFire({ icon: "error", title: "Oops", text });
+const swalError = (text) => swalFire({ icon: "error", title: "Oops", text });
 
-export default function Purchases() {
+function Purchases() {
   const [rows, setRows] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
   const [products, setProducts] = useState([]);
@@ -98,12 +118,10 @@ export default function Purchases() {
 
   // computed rows for sorting / display
   const computedRows = useMemo(() => {
-    return rows.map(r => {
-      return {
-        ...r,
-        display_total_cost: r.total_cost ?? r.purchase_total_cost ?? 0,
-      };
-    });
+    return rows.map(r => ({
+      ...r,
+      display_total_cost: r.total_cost ?? r.purchase_total_cost ?? 0,
+    }));
   }, [rows]);
 
   const sortedRows = useMemo(
@@ -111,12 +129,34 @@ export default function Purchases() {
     [computedRows, order, orderBy]
   );
 
+  // Header style
   const headerCellSx = {
-    p: 1.5, fontSize: "0.95rem", fontWeight: 700,
+    py: 3.0, px: 0.75, fontSize: "0.90rem", fontWeight: 700, // bigger than rows
     bgcolor: "#706f6fff", textAlign: "center", color: "white",
   };
 
-  // dialog controls
+  // Body style
+  const bodyCellSx = {
+    textAlign: "center",
+    fontSize: "0.90rem",
+    py: 2,
+    px: 1,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+  };
+
+  // Wrapping Cell Style (so that it has not ellipses)
+  const wrapCellSx = {
+    whiteSpace: "normal",
+    wordBreak: "break-word",
+    textOverflow: "clip",
+    overflow: "visible",
+    maxWidth: "none",
+    px: 1.25,
+  };
+
+
+  // Dialog controls
   const closeDialog = () => { setOpen(false); setSelectedId(null); setFormData({}); };
   const openCreate = () => { setDialogMode("create"); setSelectedId(null); setFormData({}); setOpen(true); };
   const openView = (row) => {
@@ -168,7 +208,7 @@ export default function Purchases() {
   };
 
   return (
-    <Box sx={{ p: 2, fontFamily: "Poppins, sans-serif" }}>
+    <Box sx={{ p: 2, fontFamily: "Poppins, sans-serif",  }}>
       <Typography variant="h3" sx={{ fontWeight: 700, mb: 5, mt: -6 }}>
         Purchase
       </Typography>
@@ -180,6 +220,7 @@ export default function Purchases() {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           onKeyDown={onSearchKey}
+          variant="outlined"
           InputProps={{
             startAdornment: (
               <InputAdornment position="start">
@@ -187,7 +228,17 @@ export default function Purchases() {
               </InputAdornment>
             ),
           }}
-          sx={{ maxWidth: 420, width: "100%" }}
+          sx={{
+            maxWidth: 520, width: "100%",
+            "& .MuiOutlinedInput-root": {
+              bgcolor: "background.paper",
+              borderRadius: 2,
+              "& .MuiOutlinedInput-notchedOutline": { borderColor: "rgba(0,0,0,0.25)" },
+              "&:hover .MuiOutlinedInput-notchedOutline": { borderColor: "rgba(0,0,0,0.45)" },
+              "&.Mui-focused .MuiOutlinedInput-notchedOutline": { borderColor: "#E67600", borderWidth: 2 },
+            },
+            "& input::placeholder": { opacity: 1 }, // visible placeholder
+          }}
         />
         <Button
           variant="contained"
@@ -202,31 +253,52 @@ export default function Purchases() {
       <Paper elevation={1} sx={{ borderRadius: 2, bgcolor: "transparent", boxShadow: "none" }}>
         <TableContainer
           component={Paper}
-          sx={{ borderRadius: 2, border: "1px solid #ddd", boxShadow: "0px 2px 8px rgba(0,0,0,0.1)", bgcolor: "background.paper" }}
+          sx={{
+            borderRadius: 2,
+            border: "1px solid #ddd",
+            boxShadow: "0px 2px 8px rgba(0,0,0,0.1)",
+            bgcolor: "background.paper",
+          }}
         >
-          <Table size="small">
+          {/* Total: 100% */}
+          <Table size="small" sx={{ tableLayout: "fixed" }}>
+            <colgroup>
+              <col style={{ width: "9%" }} />   {/* Date */}
+              <col style={{ width: "10%" }} />  {/* Supplier */}
+              <col style={{ width: "11%" }} />  {/* Product */}
+              <col style={{ width: "10%" }} />  {/* Purchased */}
+              <col style={{ width: "10%" }} />  {/* Received */}
+              <col style={{ width: "9%" }} />   {/* Remaining */}
+              <col style={{ width: "7%" }} />   {/* Unit ₱ */}
+              <col style={{ width: "8%" }} />   {/* Total ₱ */}
+              <col style={{ width: "10%" }} />   {/* Order */}
+              <col style={{ width: "8%" }} />   {/* Payment */}
+              <col style={{ width: "8%" }} />   {/* Actions */}
+            </colgroup>
+
+
             <TableHead sx={{ "& .MuiTableCell-root": headerCellSx }}>
               <TableRow>
                 <SortableHeader id="purchase_date" label="Date" order={order} orderBy={orderBy} onSort={handleSort} />
-                <SortableHeader id="supplier_name" label="Supplier Name" order={order} orderBy={orderBy} onSort={handleSort} />
+                <SortableHeader id="supplier_name" label="Supplier" order={order} orderBy={orderBy} onSort={handleSort} />
                 <SortableHeader id="product_name" label="Product" order={order} orderBy={orderBy} onSort={handleSort} />
-                <SortableHeader id="quantity" label="No. of Purchased Items" order={order} orderBy={orderBy} onSort={handleSort} />
-                <SortableHeader id="qty_received" label="Qty. Received" order={order} orderBy={orderBy} onSort={handleSort} />
+                <SortableHeader id="quantity" label="Purchased" order={order} orderBy={orderBy} onSort={handleSort} />
+                <SortableHeader id="qty_received" label="Received" order={order} orderBy={orderBy} onSort={handleSort} />
                 <SortableHeader id="remaining" label="Remaining" order={order} orderBy={orderBy} onSort={handleSort} />
-                <SortableHeader id="unit_cost" label="Unit Cost" order={order} orderBy={orderBy} onSort={handleSort} />
-                <SortableHeader id="total_cost" label="Total Cost" order={order} orderBy={orderBy} onSort={handleSort} />
-                <SortableHeader id="purchase_status" label="Order Status" order={order} orderBy={orderBy} onSort={handleSort} />
-                <SortableHeader id="purchase_payment_status" label="Payment Status" order={order} orderBy={orderBy} onSort={handleSort} />
-                <TableCell sx={{ ...headerCellSx }} width={160}>Actions</TableCell>
+                <SortableHeader id="unit_cost" label="Unit ₱" order={order} orderBy={orderBy} onSort={handleSort} />
+                <SortableHeader id="total_cost" label="Total ₱" order={order} orderBy={orderBy} onSort={handleSort} />
+                <SortableHeader id="purchase_status" label="Order" order={order} orderBy={orderBy} onSort={handleSort} />
+                <SortableHeader id="purchase_payment_status" label="Payment" order={order} orderBy={orderBy} onSort={handleSort} />
+                <TableCell sx={headerCellSx}>Actions</TableCell>
               </TableRow>
             </TableHead>
 
-            <TableBody sx={{ "& .MuiTableCell-root": { textAlign: "center" } }}>
+            <TableBody sx={{ "& .MuiTableCell-root": bodyCellSx }}>
               {loading && (
                 <TableRow>
                   <TableCell colSpan={11}>
                     <Stack direction="row" spacing={1} justifyContent="center" alignItems="center" py={2}>
-                      <CircularProgress size={20} />
+                      <CircularProgress size={18} />
                       <Typography variant="body2">Loading…</Typography>
                     </Stack>
                   </TableCell>
@@ -245,33 +317,48 @@ export default function Purchases() {
 
               {!loading && sortedRows.map((row) => (
                 <TableRow key={`${row.purchase_id}-${row.purchase_item_id}`}>
-                  <TableCell>{row.purchase_date}</TableCell>
-                  <TableCell>{row.supplier_name}</TableCell>
-                  <TableCell>{row.product_name}</TableCell>
-                  <TableCell>{row.quantity}</TableCell>
-                  <TableCell>{row.qty_received}</TableCell>
-                  <TableCell>{row.remaining}</TableCell>
-                  <TableCell>{peso(row.unit_cost)}</TableCell>
-                  <TableCell>{peso(row.total_cost)}</TableCell>
-                  <TableCell>
-                    <Chip size="small" color={row.remaining === 0 ? 'success' : 'warning'} label={row.purchase_status} />
+                  <TableCell sx={wrapCellSx}>
+                    {dateFormat(row.purchase_date)}
                   </TableCell>
-                  <TableCell>{row.purchase_payment_status}</TableCell>
+
+
+                  <TableCell title={row.supplier_name}>{row.supplier_name}</TableCell>
+                  <TableCell title={row.product_name}>{row.product_name}</TableCell>
+
+                  <TableCell title={String(row.quantity)}>{row.quantity}</TableCell>
+                  <TableCell title={String(row.qty_received)}>{row.qty_received}</TableCell>
+                  <TableCell title={String(row.remaining)}>{row.remaining}</TableCell>
+
+                  <TableCell title={peso(row.unit_cost)}>{peso(row.unit_cost)}</TableCell>
+                  <TableCell title={peso(row.total_cost)}>{peso(row.total_cost)}</TableCell>
+
+                  <TableCell sx={wrapCellSx}>
+                    <Chip
+                      size="small"
+                      color={row.remaining === 0 ? "success" : "warning"}
+                      label={row.purchase_status}
+                      sx={{ px: 0.9, maxWidth: "none" }}
+                    />
+                  </TableCell>
+
+                  <TableCell sx={wrapCellSx}>{row.purchase_payment_status}</TableCell>
+
+
                   <TableCell>
-                    <Stack direction="row" justifyContent="center">
+                    <Stack direction="row" justifyContent="center" spacing={0.5}>
                       <Tooltip title="View">
-                        <IconButton size="medium" color="success" onClick={() => openView(row)}>
-                          <MdVisibility />
+                        <IconButton size="small" color="success" onClick={() => openView(row)}>
+                          <MdVisibility sx={{fontSize: "45px"}} />
                         </IconButton>
                       </Tooltip>
                       <Tooltip title="Edit">
-                        <IconButton size="medium" color="primary" onClick={() => openEdit(row)}>
-                          <MdEdit />
+                        <IconButton size="small" color="primary" onClick={() => openEdit(row)}>
+                          <MdEdit fontSize="medium" />
                         </IconButton>
                       </Tooltip>
                       <Tooltip title="Delete">
-                        <IconButton size="medium" color="error" onClick={() => handleDelete(row)}>
-                          <MdDelete />
+                        <IconButton size="small" color="error" onClick={() => handleDelete(row)}>
+                          <MdDelete fontSize="medium" />
                         </IconButton>
                       </Tooltip>
                     </Stack>
@@ -279,7 +366,6 @@ export default function Purchases() {
                 </TableRow>
               ))}
             </TableBody>
-
           </Table>
         </TableContainer>
       </Paper>
@@ -321,3 +407,5 @@ export default function Purchases() {
     </Box>
   );
 }
+
+export default  Purchases;
