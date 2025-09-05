@@ -679,7 +679,26 @@ app.delete('/purchases/:id', (req, res) => {
         res.json({ message: 'Purchase deleted' });
     });
 });
+ 
+// Sales ->>>>>>>>>>>>
+app.post("/sales", (req, res) => {
+    const { account_id, product_id, warehouse_id, sale_date, customer_name, total_sale, delivery_status, sale_payment_status } = req.body;
 
+    if (!account_id || !product_id || !warehouse_id || !sale_date || !customer_name || !total_sale || !delivery_status || !sale_payment_status) {
+        return res.status(400).json({ error: "Missing required information." });
+    }
 
+    const insertSalesQuery = `
+        INSERT INTO sales (account_id, product_id, warehouse_id, sale_date, customer_name, total_sale, delivery_status, sale_payment_status, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
+    `;
+
+    executeQuery(
+        insertSalesQuery,
+        [account_id, product_id, warehouse_id, sale_date, customer_name, total_sale, delivery_status, sale_payment_status],
+        res,
+        "Sales added successfully"
+    );
+});
 
 app.listen(process.env.PORT, () => console.log(`Server running on port ${process.env.PORT}`));
