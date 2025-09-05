@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useLocation, Link as RouterLink, useNavigate } from "react-router-dom";
 import { Box, Drawer, List, ListItemButton, ListItemIcon, ListItemText, Toolbar, IconButton, useMediaQuery, Divider } from "@mui/material";
 import { Menu as MenuIcon } from "@mui/icons-material";
@@ -9,6 +9,7 @@ import { TbPackages } from "react-icons/tb";
 import { IoReceipt } from "react-icons/io5";
 import { BiArrowBack } from "react-icons/bi";
 import logo from "../../images/kkc-logo.png";
+import { Logout, ValidateUserLoggedIn } from "../logics/auth/ValidateLogin";
 
 
 const allItems = [
@@ -36,11 +37,27 @@ function Sidebar({ drawerWidth = 260, accountType = "admin" }) {
 
   const [mobileOpen, setMobileOpen] = useState(false);
 
+  const [userDetails, setUserDetails] = useState(null);
+
+  useEffect(() => {
+    const checkSession = async () => {
+      const user = await ValidateUserLoggedIn(navigate);
+      if (user) {
+        console.log("User from session:", user);
+        setUserDetails(user);
+      }
+    };
+    checkSession();
+  }, [navigate]);
+
   const items = useMemo(() => {
-    return accountType === "warehouse"
+    if (!userDetails) return allItems; // fallback until session is loaded
+
+    return userDetails.role.toLowerCase() === "warehouse"
       ? allItems.filter((i) => i.label !== "Accounts")
       : allItems;
-  }, [accountType]);
+  }, [userDetails]);
+
 
   const swalConfirm = async (title, text) => {
     const res = await Swal.fire({
@@ -58,16 +75,17 @@ function Sidebar({ drawerWidth = 260, accountType = "admin" }) {
   };
 
   const handleLogout = async () => {
-    const ok = await swalConfirm("Logout?", "Are you sure you want to logout?");
-    if (!ok) return;
-    try {
-      // localStorage.removeItem("authToken");
-      // sessionStorage.clear();
-    } finally {
-      if (isMobile) setMobileOpen(false);
-      navigate("/login", { replace: true });
-    }
+      const ok = await swalConfirm("Logout?", "Are you sure you want to logout?");
+      if (!ok) return;
+
+      try {
+          await Logout();
+      } finally {
+          if (isMobile) setMobileOpen(false);
+          navigate("/login", { replace: true });
+      }
   };
+
 
   // Scales based on height
   const logoSize = isTiny
@@ -179,7 +197,7 @@ function Sidebar({ drawerWidth = 260, accountType = "admin" }) {
         © {new Date().getFullYear()} KKC
       </Box>
     </Box>
-  );
+  );  
 
   return (
     <>

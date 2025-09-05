@@ -1,14 +1,18 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Box, Typography, Tabs, Tab, Paper, Button, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, IconButton, Stack, useMediaQuery } from "@mui/material";
+import { Box, Typography, Tabs, Tab, Paper, Button, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, IconButton, Stack, useMediaQuery, TextField, InputAdornment, MenuItem } from "@mui/material";
 import { Edit as EditIcon, Delete as DeleteIcon, Add as AddIcon } from "@mui/icons-material";
 import { useTheme } from "@mui/material/styles";
-import SortableHeader, { getComparator, stableSort } from "../components/SortableHeader";  
+import SortableHeader, { getComparator, stableSort } from "../components/SortableHeader";
 
 import WarehouseDialog from "../components/WarehouseDialog";
-import UserDialog from "../components/UserDialog"; 
+import UserDialog from "../components/UserDialog";
 
 import { RetrieveWarehouse, InsertWarehouse, UpdateWarehouse, DeleteWarehouse } from "../logics/admin/ManageWarehouse";
-import { DeleteAccount, InsertAccount,  RetrieveAccounts, UpdateAccount } from "../logics/auth/ManageAccount"; 
+import { DeleteAccount, InsertAccount, RetrieveAccounts, UpdateAccount } from "../logics/auth/ManageAccount"; 
+
+import SearchBar from "../components/SearchBar";
+import { useNavigate } from "react-router-dom";
+import { ValidateUserLoggedIn } from "../logics/auth/ValidateLogin";
 
 // A11y Helpers for Tabs
 function a11yProps(index) {
@@ -41,20 +45,46 @@ const USER_COLUMNS = [
 function Accounts() {
   // UI Variables
   const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down("md"));  
+  const isMobile = useMediaQuery(theme.breakpoints.down("md"));
   const [tab, setTab] = useState(0);
 
   // Dialog/Modal State
   const [openWarehouse, setOpenWarehouse] = useState(false);
   const [openUserDialog, setOpenUserDialog] = useState(false);
-  const [modalType, setModalType] = useState(null);   
+  const [modalType, setModalType] = useState(null);
 
   // Dynamics Variable States
   const [warehouses, setWarehouses] = useState([]);
-  const [users, setUsers] = useState([]);  
-  const warehouseNames = useMemo(() => warehouses.map((w) => ({ label: w.warehouse_name, value: w.warehouse_id })), [warehouses]);  
-  const [selectedWarehouse, setSelectedWarehouse] = useState(null); 
+  const [users, setUsers] = useState([]);
+  const warehouseNames = useMemo(() => warehouses.map((w) => ({ label: w.warehouse_name, value: w.warehouse_id })), [warehouses]);
+  const [selectedWarehouse, setSelectedWarehouse] = useState(null);
   const [selectedUser, setSelectedUser] = useState(null);
+
+  // Filter Variables
+  const [search, setSearch] = useState("");   
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    const checkSession = async () => {
+      const user = await ValidateUserLoggedIn(navigate);
+
+      if (!user) { 
+        navigate("/login");
+        return;
+      }
+
+      console.log("User from session:123", user);
+
+      if (user.role.toLowerCase() !== "admin") { 
+        if (window.location.pathname !== "/") {
+          navigate("/", { replace: true });
+        }
+      }
+    };
+
+    checkSession();
+  }, [navigate]);
+
 
   // Fetcher
   useEffect(() => {
@@ -63,10 +93,10 @@ function Accounts() {
       setWarehouses(data);
     };
 
-    fetchWarehouses();  
+    fetchWarehouses();
 
-    const interval = setInterval(fetchWarehouses, 2000);  
-    return () => clearInterval(interval);  
+    const interval = setInterval(fetchWarehouses, 2000);
+    return () => clearInterval(interval);
   }, []);
 
   useEffect(() => {
@@ -79,54 +109,54 @@ function Accounts() {
 
     const interval = setInterval(fetchUsers, 2000);
     return () => clearInterval(interval);
-  }, []); 
- 
+  }, []);
+
 
   // Managers
-  const handleManageWarehouse = (payload, modal_type) => { 
-    if (modal_type == "Add"){
+  const handleManageWarehouse = (payload, modal_type) => {
+    if (modal_type == "Add") {
       InsertWarehouse(payload);
     } else if (modal_type == "Edit") {
       UpdateWarehouse(payload);
     }
-  }; 
+  };
 
-  const handleManageUser = (payload, modal_type) => {  
+  const handleManageUser = (payload, modal_type) => {
     console.log("Test Add: ", payload);
-    if (modal_type == "Add"){
+    if (modal_type == "Add") {
       InsertAccount(payload);
-    } else if (modal_type == "Edit") { 
+    } else if (modal_type == "Edit") {
       UpdateAccount(payload);
     }
-  };  
-  
+  };
+
   const handleUserDialogOpen = (type, user = null, warehouse = null) => {
-    if (type === "Edit" && warehouse) { 
-        setSelectedWarehouse(warehouse);
-        setSelectedUser(user);  
+    if (type === "Edit" && warehouse) {
+      setSelectedWarehouse(warehouse);
+      setSelectedUser(user);
     }
 
     setModalType(type);
     setOpenUserDialog(true);
   };
-  
+
   const handleWarehouseDialogOpen = (modal_type, warehouse = null) => {
     if (modal_type === "Edit" && warehouse) {
-      setSelectedWarehouse(warehouse); 
-    }    
+      setSelectedWarehouse(warehouse);
+    }
 
-    setModalType(modal_type); 
-    setOpenWarehouse(true); 
-  }; 
+    setModalType(modal_type);
+    setOpenWarehouse(true);
+  };
 
-  const handleDeleteDialogWarehouse = (warehouse_id) => { 
-    DeleteWarehouse(warehouse_id); 
+  const handleDeleteDialogWarehouse = (warehouse_id) => {
+    DeleteWarehouse(warehouse_id);
   }
 
-  const handleDeleteDialogAccount = (account_id) => { 
-    DeleteAccount(account_id); 
-  } 
-  
+  const handleDeleteDialogAccount = (account_id) => {
+    DeleteAccount(account_id);
+  }
+
   // Sort State Per Tab
   // Warehouse
   const [whOrderBy, setWhOrderBy] = useState("name");
@@ -135,7 +165,7 @@ function Accounts() {
   // Accounts/User
   const [userOrderBy, setUserOrderBy] = useState("fullName");
   const [userOrder, setUserOrder] = useState("asc");
- 
+
   // Sort handlers (tiny + generic) 
   const sortWarehouse = (property) => {
     const isAsc = whOrderBy === property && whOrder === "asc";
@@ -148,15 +178,38 @@ function Accounts() {
     setUserOrderBy(property);
   };
 
-  // Derived sorted data 
+  // Search and Sorted Dynamic ----------------------------->
   const sortedWarehouses = useMemo(
     () => stableSort(warehouses, getComparator(whOrder, whOrderBy)),
     [warehouses, whOrder, whOrderBy]
   );
+
+  const filteredWarehouses = useMemo(() => {
+    return sortedWarehouses.filter(
+      (w) =>
+        w.warehouse_name.toLowerCase().includes(search.toLowerCase()) ||
+        w.location.toLowerCase().includes(search.toLowerCase())
+    );
+  }, [sortedWarehouses, search]);
+
   const sortedUsers = useMemo(
     () => stableSort(users, getComparator(userOrder, userOrderBy)),
     [users, userOrder, userOrderBy]
   );
+
+  const filteredUsers = useMemo(() => {
+    return sortedUsers.filter((u) => {
+      const wh = warehouses.find((w) => w.warehouse_id === u.warehouse_id);
+
+      const fullnameMatch = u.fullname.toLowerCase().includes(search.toLowerCase());
+      const locationMatch = wh?.location?.toLowerCase().includes(search.toLowerCase());
+      const warehouseMatch = wh?.warehouse_name?.toLowerCase().includes(search.toLowerCase());
+      const roleMatch = u.role.toLowerCase().includes(search.toLowerCase());
+
+      return fullnameMatch || locationMatch || warehouseMatch || roleMatch;
+    });
+  }, [sortedUsers, warehouses, search]);
+
 
   return (
     <Box sx={{ p: 2, fontFamily: "Poppins, sans-serif" }}>
@@ -207,6 +260,16 @@ function Accounts() {
         )}
       </Stack>
 
+      <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2, px: 1 }} spacing={2}>
+        <Stack direction="row" spacing={2}> 
+          <SearchBar
+            search={search}
+            onSearchChange={setSearch}
+          />  
+        </Stack>
+      </Stack> 
+
+
       <Paper sx={{ borderRadius: 2, p: 2 }}>
         {/* Tabs */}
         <Box sx={{ display: "flex", justifyContent: "center", mb: 3 }}>
@@ -225,6 +288,7 @@ function Accounts() {
               boxShadow: "0px 2px 8px rgba(0,0,0,0.1)",
               bgcolor: "background.paper",
             }}>
+
             <Table size="small" aria-label="warehouses table" sx={{ textAlign: "center" }}>
               <TableHead
                 sx={{
@@ -256,7 +320,7 @@ function Accounts() {
                     fontSize: "0.95rem",
                   },
                 }}>
-                {sortedWarehouses.map((w, index) => (
+                {filteredWarehouses.map((w, index) => (
                   <TableRow key={w.id} hover>
                     <TableCell sx={{ textAlign: "center" }}>{index + 1}</TableCell>
                     <TableCell sx={{ textAlign: "center" }}>{w.warehouse_name}</TableCell>
@@ -326,7 +390,7 @@ function Accounts() {
                     fontSize: "0.95rem",        // body a hair smaller than header
                   },
                 }}>
-                {sortedUsers.map((u, index) => {
+                {filteredUsers.map((u, index) => {
                   const wh = warehouses.find(w => w.warehouse_id === u.warehouse_id);
 
                   return (
@@ -365,9 +429,9 @@ function Accounts() {
         open={openWarehouse}
         onClose={() => setOpenWarehouse(false)}
         onSubmit={(payload) => {
-          handleManageWarehouse(payload, modalType);  
-          setOpenWarehouse(false); 
-        }} 
+          handleManageWarehouse(payload, modalType);
+          setOpenWarehouse(false);
+        }}
         warehouse={modalType === "Add" ? warehouseNames : selectedWarehouse}
         modal_type={modalType}
       />
@@ -378,12 +442,12 @@ function Accounts() {
         warehouses={modalType === "Add" ? warehouseNames : warehouses}
         user={modalType === "Edit" ? selectedUser : null}
         onSubmit={(payload) => {
-          handleManageUser(payload, modalType); 
-          setOpenUserDialog(false); 
+          handleManageUser(payload, modalType);
+          setOpenUserDialog(false);
         }}
         modal_type={modalType}
-      />  
- 
+      />
+
     </Box>
   );
 }

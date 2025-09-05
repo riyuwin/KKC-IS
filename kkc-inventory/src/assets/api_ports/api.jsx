@@ -1,6 +1,9 @@
 // AUTH 
 export const PortLogin = `${import.meta.env.VITE_API_LOGIN}`;
 export const PortSignUp = `${import.meta.env.VITE_API_SIGNUP}`;
+export const PortSession = `${import.meta.env.VITE_API_SESSION}`;
+export const PortLogout = `${import.meta.env.VITE_API_LOGOUT}`;
+
 
 // Accounts
 export const PortAccounts = `${import.meta.env.VITE_API_ACCOUNTS}`;

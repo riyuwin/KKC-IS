@@ -6,15 +6,24 @@ const session = require("express-session");
 const bcrypt = require("bcrypt");
 
 const app = express();
-app.use(cors());
+
+// CORS setup (gawin muna bago routes)
+app.use(
+    cors({
+        origin: process.env.DB_FRONTEND_HOST, //"http://localhost:5173", // frontend URL
+        credentials: true,               // allow cookies/session
+    })
+);
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+/* 
+WIPPPP
 const urlDB = `mysql://${process.env.MYSQLUSER}:${process.env.MYSQL_ROOT_PASSWORD}@${process.env.RAILWAY_TCP_PROXY_DOMAIN}:${process.env.RAILWAY_TCP_PROXY_PORT}/${process.env.MYSQL_DATABASE}`
 
 const db = mysql.createPool(urlDB);
 
-/* 
 const db = mysql.createPool({
     host: process.env.MYSQL_HOST,           // use private domain
     user: process.env.MYSQLUSER,
@@ -25,22 +34,20 @@ const db = mysql.createPool({
     connectionLimit: 10,
     queueLimit: 0
 });
-
- */
+*/
 
 /* 
 For Localhost Debugging ---->>>
-
+*/
 const db = mysql.createPool({
-    host: process.env.VITE_DB_HOST,
-    user: process.env.VITE_DB_USER,
-    password: process.env.VITE_DB_PASSWORD,
-    database: process.env.VITE_DB_NAME,
+    host: process.env.DB_HOST,
+    user: process.env.DB_USER,
+    password: process.env.DB_PASSWORD,
+    database: process.env.DB_NAME,
     waitForConnections: true,
     connectionLimit: 10,
     queueLimit: 0
 });
- */
 
 db.getConnection((err, connection) => {
     if (err) {
@@ -51,23 +58,19 @@ db.getConnection((err, connection) => {
     }
 });
 
+// ✅ Session middleware
 app.use(
-    cors({
-        origin: process.env.VITE_DB_FRONTEND_HOST,
-        credentials: true,
+    session({
+        secret: process.env.SESSION_KEY,
+        resave: false,
+        saveUninitialized: false,
+        cookie: {
+            secure: false,   // true kapag naka-HTTPS
+            httpOnly: true,
+            sameSite: "lax",
+        },
     })
 );
-
-app.use(session({
-    secret: process.env.VITE_SESSION_KEY,
-    resave: false,
-    saveUninitialized: false,
-    cookie: {
-        secure: false,
-        httpOnly: true,
-        sameSite: "lax"
-    }
-}));
 
 function executeQuery(query, params, res, messageContent) {
     db.getConnection((err, connection) => {
@@ -212,10 +215,10 @@ app.post("/login", (req, res) => {
                 console.error("Session not initialized!");
             }
 
-            req.session.user = { account_id: user.account_id, email: user.email, role: user.role };
+            req.session.user = { account_id: user.account_id, fullname: user.fullname, username: user.username, email: user.email, role: user.role };
             console.log("Session Created:", req.session.user);
 
-            res.json({ message: "Login successful", account_id: user.account_id, email: user.email, role: user.role });
+            res.json({ message: "Login successful", account_id: user.account_id, fullname: user.fullname, username: user.username, email: user.email, role: user.role });
         });
     });
 });
@@ -231,7 +234,7 @@ app.get("/session", (req, res) => {
 });
 
 app.post("/logout", (req, res) => {
-    if (!req.session) {
+    if (!req.session.user) {
         return res.status(400).json({ error: "No active session" });
     }
 
@@ -240,9 +243,11 @@ app.post("/logout", (req, res) => {
             console.error("Session destruction error:", err);
             return res.status(500).json({ error: "Logout failed" });
         }
+        res.clearCookie("connect.sid"); 
         res.json({ message: "Logged out successfully" });
     });
 });
+
 
 // Warehouse ->>>>>>>>>>>>
 app.post("/warehouse", (req, res) => {
@@ -677,4 +682,4 @@ app.delete('/purchases/:id', (req, res) => {
 
 
 
-app.listen(process.env.VITE_PORT, () => console.log(`Server running on port ${process.env.VITE_PORT}`));
+app.listen(process.env.PORT, () => console.log(`Server running on port ${process.env.PORT}`));
