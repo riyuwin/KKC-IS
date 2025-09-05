@@ -1,11 +1,16 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Box, Paper, Typography, TextField, Button, InputAdornment, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, IconButton, CircularProgress, Tooltip, Chip, Stack } from "@mui/material";
-import { MdSearch, MdAdd, MdVisibility, MdEdit, MdDelete } from "react-icons/md";
+import {
+  Box, Paper, Typography, Button,
+  Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
+  IconButton, CircularProgress, Tooltip, Chip, Stack
+} from "@mui/material";
+import { MdAdd, MdVisibility, MdEdit, MdDelete } from "react-icons/md";
 import Swal from "sweetalert2";
 import PurchasesCRUD from "../logics/purchases/PurchasesCRUD";
 import SortableHeader, { getComparator, stableSort } from "../components/SortableHeader";
 import PurchaseDialog from "../components/PurchaseDialog";
 import { PortSuppliers, PortProducts } from "../api_ports/api";
+import SearchBar from "../components/SearchBar"; 
 
 function peso(n) {
   if (n === "" || n === null || typeof n === "undefined") return "";
@@ -37,7 +42,6 @@ function dateFormat(v) {
   });
 }
 
-
 // SweetAlert helpers
 const swalFire = (opts) =>
   Swal.fire({
@@ -57,7 +61,7 @@ const swalConfirm = async (title, text) => {
   return res.isConfirmed;
 };
 const swalSuccess = (text) => swalFire({ icon: "success", title: "Success", text, timer: 1400, showConfirmButton: false });
-const swalError = (text) => swalFire({ icon: "error", title: "Oops", text });
+const swalError   = (text) => swalFire({ icon: "error", title: "Oops", text });
 
 function Purchases() {
   const [rows, setRows] = useState([]);
@@ -82,11 +86,11 @@ function Purchases() {
     setOrderBy(property);
   };
 
+
   useEffect(() => {
     const t = setTimeout(() => setSearchNow(search), 150);
     return () => clearTimeout(t);
   }, [search]);
-  const onSearchKey = (e) => { if (e.key === "Enter") setSearchNow(search); };
 
   async function loadMeta() {
     try {
@@ -131,7 +135,7 @@ function Purchases() {
 
   // Header style
   const headerCellSx = {
-    py: 3.0, px: 0.75, fontSize: "0.90rem", fontWeight: 700, // bigger than rows
+    py: 3.0, px: 0.75, fontSize: "0.90rem", fontWeight: 700,
     bgcolor: "#706f6fff", textAlign: "center", color: "white",
   };
 
@@ -145,7 +149,7 @@ function Purchases() {
     textOverflow: "ellipsis",
   };
 
-  // Wrapping Cell Style (so that it has not ellipses)
+  // Wrapping Cell Style (no ellipses)
   const wrapCellSx = {
     whiteSpace: "normal",
     wordBreak: "break-word",
@@ -154,7 +158,6 @@ function Purchases() {
     maxWidth: "none",
     px: 1.25,
   };
-
 
   // Dialog controls
   const closeDialog = () => { setOpen(false); setSelectedId(null); setFormData({}); };
@@ -208,38 +211,13 @@ function Purchases() {
   };
 
   return (
-    <Box sx={{ p: 2, fontFamily: "Poppins, sans-serif",  }}>
+    <Box sx={{ p: 2, fontFamily: "Poppins, sans-serif" }}>
       <Typography variant="h3" sx={{ fontWeight: 700, mb: 5, mt: -6 }}>
         Purchase
       </Typography>
 
       <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2, px: 1 }} spacing={2}>
-        <TextField
-          size="small"
-          placeholder="Search purchases…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          onKeyDown={onSearchKey}
-          variant="outlined"
-          InputProps={{
-            startAdornment: (
-              <InputAdornment position="start">
-                <MdSearch />
-              </InputAdornment>
-            ),
-          }}
-          sx={{
-            maxWidth: 520, width: "100%",
-            "& .MuiOutlinedInput-root": {
-              bgcolor: "background.paper",
-              borderRadius: 2,
-              "& .MuiOutlinedInput-notchedOutline": { borderColor: "rgba(0,0,0,0.25)" },
-              "&:hover .MuiOutlinedInput-notchedOutline": { borderColor: "rgba(0,0,0,0.45)" },
-              "&.Mui-focused .MuiOutlinedInput-notchedOutline": { borderColor: "#E67600", borderWidth: 2 },
-            },
-            "& input::placeholder": { opacity: 1 }, // visible placeholder
-          }}
-        />
+        <SearchBar search={search} onSearchChange={setSearch} placeholder="Search purchases..." />
         <Button
           variant="contained"
           startIcon={<MdAdd />}
@@ -260,7 +238,6 @@ function Purchases() {
             bgcolor: "background.paper",
           }}
         >
-          {/* Total: 100% */}
           <Table size="small" sx={{ tableLayout: "fixed" }}>
             <colgroup>
               <col style={{ width: "9%" }} />   {/* Date */}
@@ -271,11 +248,10 @@ function Purchases() {
               <col style={{ width: "9%" }} />   {/* Remaining */}
               <col style={{ width: "7%" }} />   {/* Unit ₱ */}
               <col style={{ width: "8%" }} />   {/* Total ₱ */}
-              <col style={{ width: "10%" }} />   {/* Order */}
+              <col style={{ width: "10%" }} />  {/* Order */}
               <col style={{ width: "8%" }} />   {/* Payment */}
               <col style={{ width: "8%" }} />   {/* Actions */}
             </colgroup>
-
 
             <TableHead sx={{ "& .MuiTableCell-root": headerCellSx }}>
               <TableRow>
@@ -321,7 +297,6 @@ function Purchases() {
                     {dateFormat(row.purchase_date)}
                   </TableCell>
 
-
                   <TableCell title={row.supplier_name}>{row.supplier_name}</TableCell>
                   <TableCell title={row.product_name}>{row.product_name}</TableCell>
 
@@ -343,22 +318,21 @@ function Purchases() {
 
                   <TableCell sx={wrapCellSx}>{row.purchase_payment_status}</TableCell>
 
-
                   <TableCell>
                     <Stack direction="row" justifyContent="center" spacing={0.5}>
                       <Tooltip title="View">
                         <IconButton size="small" color="success" onClick={() => openView(row)}>
-                          <MdVisibility sx={{fontSize: "45px"}} />
+                          <MdVisibility style={{ fontSize: 22 }} />
                         </IconButton>
                       </Tooltip>
                       <Tooltip title="Edit">
                         <IconButton size="small" color="primary" onClick={() => openEdit(row)}>
-                          <MdEdit fontSize="medium" />
+                          <MdEdit style={{ fontSize: 22 }} />
                         </IconButton>
                       </Tooltip>
                       <Tooltip title="Delete">
                         <IconButton size="small" color="error" onClick={() => handleDelete(row)}>
-                          <MdDelete fontSize="medium" />
+                          <MdDelete style={{ fontSize: 22 }} />
                         </IconButton>
                       </Tooltip>
                     </Stack>
@@ -408,4 +382,4 @@ function Purchases() {
   );
 }
 
-export default  Purchases;
+export default Purchases;

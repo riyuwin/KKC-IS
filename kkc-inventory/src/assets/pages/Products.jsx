@@ -1,11 +1,16 @@
 // src/assets/pages/Products.jsx
 import React, { useEffect, useMemo, useState } from "react";
-import { Box, Paper, Typography, TextField, Button, InputAdornment, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, IconButton, CircularProgress, Tooltip, Chip, Stack } from "@mui/material";
-import { MdSearch, MdAdd, MdVisibility, MdEdit, MdDelete } from "react-icons/md";
+import {
+  Box, Paper, Typography, Button,
+  Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
+  IconButton, CircularProgress, Tooltip, Chip, Stack
+} from "@mui/material";
+import { MdAdd, MdVisibility, MdEdit, MdDelete } from "react-icons/md";
 import ProductsCRUD from "../logics/products/ProductsCRUD";
 import ProductDialog from "../components/ProductDialog";
 import SortableHeader, { getComparator, stableSort } from "../components/SortableHeader";
 import Swal from "sweetalert2";
+import SearchBar from "../components/SearchBar"; // ✅ use shared SearchBar
 
 // auto-generated sku/code
 function generateClientSku() {
@@ -38,7 +43,7 @@ const emptyForm = {
   supplier: "",
 };
 
-// SweetAlert2 helpers (z-index above MUI Dialog/Modal 1300) 
+// SweetAlert2 helpers (z-index above MUI Dialog/Modal 1300)
 const swalFire = (opts) =>
   Swal.fire({
     heightAuto: false,
@@ -82,7 +87,12 @@ const swalError = (text) =>
 function Products() {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
+
+  // search text controlled by SearchBar
   const [search, setSearch] = useState("");
+  // debounced value that actually triggers fetch
+  const [searchNow, setSearchNow] = useState("");
+
   const [open, setOpen] = useState(false);
   const [dialogMode, setDialogMode] = useState("create"); // 'create' | 'edit' | 'view'
   const [form, setForm] = useState({ ...emptyForm });
@@ -97,15 +107,11 @@ function Products() {
     setOrderBy(property);
   };
 
-  // Instant search
-  const [searchNow, setSearchNow] = useState("");
+  // Debounce search text -> searchNow
   useEffect(() => {
-    const t = setTimeout(() => setSearchNow(search), 150); // slight delay
+    const t = setTimeout(() => setSearchNow(search), 150);
     return () => clearTimeout(t);
   }, [search]);
-  const onSearchKey = (e) => {
-    if (e.key === "Enter") setSearchNow(search);
-  };
 
   // Fetch products
   const load = async () => {
@@ -131,8 +137,8 @@ function Products() {
         stock <= 0
           ? { label: "Out of Stock", color: "error" }
           : stock <= 5
-            ? { label: "Low", color: "warning" }
-            : { label: "In Stock", color: "success" };
+          ? { label: "Low", color: "warning" }
+          : { label: "In Stock", color: "success" };
 
       const supplier_display = r.supplier ?? r.supplier_name ?? ""; // <— unified
 
@@ -246,7 +252,6 @@ function Products() {
     px: 1.25,
   };
 
-
   return (
     <Box sx={{ p: 2, fontFamily: "Poppins, sans-serif" }}>
       <Typography variant="h3" sx={{ fontWeight: 700, mb: 5, mt: -6 }}>
@@ -255,31 +260,7 @@ function Products() {
 
       {/* Search left, Add right */}
       <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2, px: 1 }} spacing={2}>
-        <TextField
-          size="small"
-          placeholder="Search products…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          onKeyDown={onSearchKey}
-          InputProps={{
-            startAdornment: (
-              <InputAdornment position="start">
-                <MdSearch />
-              </InputAdornment>
-            ),
-          }}
-          sx={{
-            maxWidth: 520, width: "100%",
-            "& .MuiOutlinedInput-root": {
-              bgcolor: "background.paper",
-              borderRadius: 2,
-              "& .MuiOutlinedInput-notchedOutline": { borderColor: "rgba(0,0,0,0.25)" },
-              "&:hover .MuiOutlinedInput-notchedOutline": { borderColor: "rgba(0,0,0,0.45)" },
-              "&.Mui-focused .MuiOutlinedInput-notchedOutline": { borderColor: "#E67600", borderWidth: 2 },
-            },
-            "& input::placeholder": { opacity: 1 }, // visible placeholder
-          }}
-        />
+        <SearchBar search={search} onSearchChange={setSearch} placeholder="Search products..." />
         <Button
           variant="contained"
           startIcon={<MdAdd />}
@@ -308,11 +289,7 @@ function Products() {
           }}
         >
           <Table size="small">
-            <TableHead
-              sx={{
-                "& .MuiTableCell-root": headerCellSx,
-              }}
-            >
+            <TableHead sx={{ "& .MuiTableCell-root": headerCellSx }}>
               <TableRow>
                 <SortableHeader id="product_name" label="Product Name" order={order} orderBy={orderBy} onSort={handleSort} />
                 <SortableHeader id="sku" label="SKU/Code" order={order} orderBy={orderBy} onSort={handleSort} />
@@ -397,7 +374,7 @@ function Products() {
         mode={dialogMode}
         initialData={form}
         onClose={closeDialog}
-        onSwitchToEdit={() => setDialogMode("edit")} // <-- fix View -> Edit
+        onSwitchToEdit={() => setDialogMode("edit")}
         onSubmit={async (payload) => {
           const isCreate = dialogMode === "create";
           const ok = await swalConfirm(
