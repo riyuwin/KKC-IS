@@ -5,9 +5,13 @@ const cors = require("cors");
 const session = require("express-session");
 const bcrypt = require("bcrypt");
 
-const app = express();
+const multer = require("multer");  
+const path = require("path");
+const storage = multer.memoryStorage();  
+const upload = multer({ storage: storage });
 
-// CORS setup (gawin muna bago routes)
+const app = express();
+ 
 app.use(
     cors({
         origin: process.env.DB_FRONTEND_HOST, //"http://localhost:5173", // frontend URL
@@ -58,7 +62,6 @@ db.getConnection((err, connection) => {
     }
 });
 
-// ✅ Session middleware
 app.use(
     session({
         secret: process.env.SESSION_KEY,
@@ -71,6 +74,26 @@ app.use(
         },
     })
 );
+
+function executeQueryWithCallback(query, params, callback) {
+    db.getConnection((err, connection) => {
+        if (err) {
+            console.error("Connection error:", err);
+            return callback(err);
+        }
+
+        connection.query(query, params, (err, results) => {
+            connection.release(); // release back to pool
+
+            if (err) {
+                console.error("Database error:", err);
+                return callback(err);
+            }
+            callback(null, results);
+        });
+    });
+}
+
 
 function executeQuery(query, params, res, messageContent) {
     db.getConnection((err, connection) => {
@@ -759,25 +782,213 @@ app.delete('/purchases/:id', (req, res) => {
     });
 });
 
-// Sales ->>>>>>>>>>>>
-app.post("/sales", (req, res) => {
-    const { account_id, product_id, warehouse_id, sale_date, customer_name, total_sale, delivery_status, sale_payment_status } = req.body;
+// Sales ->>>>>>>>>>>>  
+app.post("/sales", upload.array("attachments"), (req, res) => {
+    const { account_id, warehouse_id, product_id, sale_date, customer_name, product_quantity, total_sale, sale_payment_status, total_delivery_quantity, total_delivered, delivery_status } = req.body;
+    const attachments = req.files;  // Multer array of files 
 
-    if (!account_id || !product_id || !warehouse_id || !sale_date || !customer_name || !total_sale || !delivery_status || !sale_payment_status) {
+    if (!account_id || !warehouse_id || !product_id || !sale_date || !customer_name || product_quantity == null || total_sale == null || !sale_payment_status || total_delivery_quantity == null || total_delivered == null || !delivery_status) {
         return res.status(400).json({ error: "Missing required information." });
     }
 
     const insertSalesQuery = `
-        INSERT INTO sales (account_id, product_id, warehouse_id, sale_date, customer_name, total_sale, delivery_status, sale_payment_status, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
-    `;
+    INSERT INTO sales (account_id, warehouse_id, sale_date, customer_name, total_sale, delivery_status, sale_payment_status, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
+  `;
 
-    executeQuery(
+    const insertSalesItemQuery = `
+    INSERT INTO sales_item (sales_id, product_id, created_at, updated_at)
+    VALUES (?, ?, NOW(), NOW())
+  `;
+
+    const insertSalesDeliveriesQuery = `
+    INSERT INTO sales_deliveries (sales_item_id, total_delivery_quantity, total_delivered, created_at, updated_at)
+    VALUES (?, ?, ?, NOW(), NOW())
+  `;
+
+    const insertAttachmentsQuery = `
+    INSERT INTO sales_attachments (sales_delivery_id, file, file_name, uploaded_at, updated_at)
+    VALUES (?, ?, ?, NOW(), NOW())
+  `;
+
+    executeQueryWithCallback(
         insertSalesQuery,
-        [account_id, product_id, warehouse_id, sale_date, customer_name, total_sale, delivery_status, sale_payment_status],
-        res,
-        "Sales added successfully"
+        [account_id, warehouse_id, sale_date, customer_name, total_sale, delivery_status, sale_payment_status,],
+        (err, result) => {
+            if (err) {
+                return res.status(500).json({ error: "Failed to insert sales" });
+            }
+
+            const salesId = result.insertId;
+
+            executeQueryWithCallback(
+                insertSalesItemQuery,
+                [salesId, product_id],
+                (err2, result2) => {
+                    if (err2) {
+                        return res.status(500).json({ error: "Failed to insert sales item" });
+                    }
+
+                    const salesItemId = result2.insertId;
+
+                    executeQueryWithCallback(
+                        insertSalesDeliveriesQuery,
+                        [salesItemId, total_delivery_quantity, total_delivered],
+                        (err3, result3) => {
+                            if (err3) {
+                                return res
+                                    .status(500)
+                                    .json({ error: "Failed to insert sales delivery" });
+                            }
+
+                            const salesDeliveryId = result3.insertId;
+
+                            const promises = attachments.map((file) => {
+                                return new Promise((resolve, reject) => {
+                                    executeQueryWithCallback(
+                                        insertAttachmentsQuery,
+                                        [salesDeliveryId, file.buffer, file.originalname], // use originalname or file.buffer if storing file in DB
+                                        (err4) => {
+                                            if (err4) reject(err4);
+                                            else resolve();
+                                        }
+                                    );
+                                });
+                            });
+ 
+                            Promise.all(promises)
+                                .then(() => {
+                                    res.json({
+                                        message:
+                                            "Sales, item, delivery, and attachments added successfully",
+                                    });
+                                })
+                                .catch(() => {
+                                    res.status(500).json({ error: "Failed to insert attachments" });
+                                });
+                        }
+                    );
+                }
+            );
+        }
     );
 });
+
+app.get("/sales/:salesId", (req, res) => {
+    const { salesId } = req.params;
+
+    const query = `
+        SELECT  s.id AS sales_id, s.account_id,  s.warehouse_id, s.sale_date, s.customer_name,
+            s.total_sale, s.delivery_status, s.sale_payment_status,
+            si.id AS sales_item_id, si.product_id, sd.id AS sales_delivery_id,
+            sd.total_delivery_quantity, sd.total_delivered,
+            sa.id AS attachment_id, sa.file_name, sa.file
+        FROM sales s
+        LEFT JOIN sales_item si ON si.sales_id = s.id
+        LEFT JOIN sales_deliveries sd ON sd.sales_item_id = si.id
+        LEFT JOIN sales_attachments sa ON sa.sales_delivery_id = sd.id
+        WHERE s.id = ?
+    `;
+
+    executeQueryWithCallback(query, [salesId], (err, results) => {
+        if (err) return res.status(500).json({ error: "Failed to fetch sale" });
+ 
+        const sale = {
+            sales_id: null,
+            account_id: null,
+            warehouse_id: null,
+            sale_date: null,
+            customer_name: null,
+            total_sale: null,
+            delivery_status: null,
+            sale_payment_status: null,
+            items: []
+        };
+
+        const itemMap = {};
+
+        results.forEach(row => {
+            // Set sale info (same for every row)
+            if (!sale.sales_id) {
+                sale.sales_id = row.sales_id;
+                sale.account_id = row.account_id;
+                sale.warehouse_id = row.warehouse_id;
+                sale.sale_date = row.sale_date;
+                sale.customer_name = row.customer_name;
+                sale.total_sale = row.total_sale;
+                sale.delivery_status = row.delivery_status;
+                sale.sale_payment_status = row.sale_payment_status;
+            }
+
+            // sale items
+            if (row.sales_item_id && !itemMap[row.sales_item_id]) {
+                itemMap[row.sales_item_id] = {
+                    sales_item_id: row.sales_item_id,
+                    product_id: row.product_id,
+                    deliveries: []
+                };
+                sale.items.push(itemMap[row.sales_item_id]);
+            }
+
+            // deliveries
+            if (row.sales_delivery_id) {
+                let delivery = itemMap[row.sales_item_id].deliveries.find(d => d.sales_delivery_id === row.sales_delivery_id);
+                if (!delivery) {
+                    delivery = {
+                        sales_delivery_id: row.sales_delivery_id,
+                        total_delivery_quantity: row.total_delivery_quantity,
+                        total_delivered: row.total_delivered,
+                        attachments: []
+                    };
+                    itemMap[row.sales_item_id].deliveries.push(delivery);
+                }
+
+                // Attachments
+                if (row.attachment_id) {
+                    delivery.attachments.push({
+                        attachment_id: row.attachment_id,
+                        file_name: row.file_name,
+                        file_data: row.file ? Buffer.from(row.file).toString("base64") : null
+                    });
+                }
+            }
+        });
+
+        res.json({ sale });
+    });
+});
+ 
+/* app.get("/sales", (req, res) => {
+    db.query("SELECT * FROM sales", (err, results) => {
+        if (err) return res.status(500).json({ error: err });
+        res.json(results);
+    });
+}); */
+ 
+app.get("/sales", (req, res) => {
+    db.query("SELECT * FROM sales", (err, sales) => {
+        if (err) return res.status(500).json({ error: err });
+ 
+        db.query("SELECT * FROM sales_item", (err, items) => {
+            if (err) return res.status(500).json({ error: err });
+ 
+            db.query("SELECT * FROM sales_deliveries", (err, deliveries) => {
+                if (err) return res.status(500).json({ error: err });
+ 
+                db.query("SELECT * FROM sales_attachments", (err, attachments) => {
+                    if (err) return res.status(500).json({ error: err });
+
+                    res.json({
+                        sales,
+                        items,
+                        deliveries,
+                        attachments
+                    });
+                });
+            });
+        });
+    });
+});
+
 
 app.listen(process.env.PORT, () => console.log(`Server running on port ${process.env.PORT}`));
