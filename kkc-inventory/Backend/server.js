@@ -243,7 +243,7 @@ app.post("/logout", (req, res) => {
             console.error("Session destruction error:", err);
             return res.status(500).json({ error: "Logout failed" });
         }
-        res.clearCookie("connect.sid"); 
+        res.clearCookie("connect.sid");
         res.json({ message: "Logged out successfully" });
     });
 });
@@ -425,14 +425,93 @@ app.delete('/products/:id', (req, res) => {
     });
 });
 
+
 // SUPPLIERS
 
+// GET /suppliers?search=...
 app.get('/suppliers', (req, res) => {
-    db.query('SELECT supplier_id, supplier_name FROM suppliers ORDER BY supplier_name', (err, rows) => {
+    const search = (req.query.search || '').trim();
+    const like = `%${search}%`;
+
+    const sql = `
+    SELECT supplier_id, supplier_name, contact_name, contact_number, email, address
+    FROM suppliers
+    ${search ? `WHERE supplier_name LIKE ? OR contact_name LIKE ? OR contact_number LIKE ? OR email LIKE ? OR address LIKE ?` : ''}
+    ORDER BY supplier_name ASC
+  `;
+    const params = search ? [like, like, like, like, like] : [];
+
+    db.query(sql, params, (err, rows) => {
         if (err) return res.status(500).json({ error: err.message });
         res.json(rows);
     });
 });
+
+// POST /suppliers
+app.post('/suppliers', (req, res) => {
+    const { supplier_name, contact_name, contact_number, email, address } = req.body;
+
+    if (!supplier_name || supplier_name.trim() === '') {
+        return res.status(400).json({ error: 'supplier_name is required' });
+    }
+
+    const sql = `
+    INSERT INTO suppliers (supplier_name, contact_name, contact_number, email, address)
+    VALUES (?,?,?,?,?)
+  `;
+    const params = [
+        supplier_name.trim(),
+        contact_name || null,
+        contact_number || null,
+        email || null,
+        address || null
+    ];
+
+    db.query(sql, params, (err, result) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json({ message: 'Supplier created', supplier_id: result.insertId });
+    });
+});
+
+// PUT /suppliers/:id
+app.put('/suppliers/:id', (req, res) => {
+    const { id } = req.params;
+    const { supplier_name, contact_name, contact_number, email, address } = req.body;
+
+    if (!supplier_name || supplier_name.trim() === '') {
+        return res.status(400).json({ error: 'supplier_name is required' });
+    }
+
+    const sql = `
+    UPDATE suppliers
+       SET supplier_name=?, contact_name=?, contact_number=?, email=?, address=?
+     WHERE supplier_id=?
+  `;
+    const params = [
+        supplier_name.trim(),
+        contact_name || null,
+        contact_number || null,
+        email || null,
+        address || null,
+        id
+    ];
+
+    db.query(sql, params, (err) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json({ message: 'Supplier updated' });
+    });
+});
+
+// DELETE /suppliers/:id
+app.delete('/suppliers/:id', (req, res) => {
+    const { id } = req.params;
+
+    db.query('DELETE FROM suppliers WHERE supplier_id=?', [id], (err) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json({ message: 'Supplier deleted' });
+    });
+});
+
 
 
 // ====== PURCHASES HELPERS ======
@@ -679,7 +758,7 @@ app.delete('/purchases/:id', (req, res) => {
         res.json({ message: 'Purchase deleted' });
     });
 });
- 
+
 // Sales ->>>>>>>>>>>>
 app.post("/sales", (req, res) => {
     const { account_id, product_id, warehouse_id, sale_date, customer_name, total_sale, delivery_status, sale_payment_status } = req.body;

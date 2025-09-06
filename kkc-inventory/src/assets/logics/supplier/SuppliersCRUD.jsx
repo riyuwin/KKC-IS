@@ -1,5 +1,5 @@
 import Swal from 'sweetalert2';
-import { PortPurchases } from '../../api_ports/api';
+import { PortSuppliers } from '../../api_ports/api';
 
 const headers = { 'Content-Type': 'application/json' };
 
@@ -9,7 +9,7 @@ const swalFire = (opts) =>
     ...opts,
     didOpen: () => {
       const c = Swal.getContainer?.();
-      if (c) c.style.zIndex = '20000'; // above MUI dialog
+      if (c) c.style.zIndex = '20000'; // higher than MUI Dialog (1300)
     },
   });
 
@@ -21,19 +21,19 @@ const swalConfirm = async (title, text) => {
     showCancelButton: true,
     confirmButtonText: 'Yes',
     cancelButtonText: 'No',
-    reverseButtons: false,
+    reverseButtons: false, 
     focusCancel: true,
   });
   return res.isConfirmed;
 };
 
-async function fetchPurchases(search = '') {
+export async function fetchSuppliers(search = '') {
   try {
-    const url = new URL(PortPurchases);
+    const url = new URL(PortSuppliers);
     if (search) url.searchParams.set('search', search);
     const res = await fetch(url.toString(), { method: 'GET' });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Failed to fetch purchases');
+    if (!res.ok) throw new Error(data.error || 'Failed to fetch suppliers');
     return data;
   } catch (err) {
     await swalFire({ icon: 'error', title: 'Load Failed', text: err.message });
@@ -41,12 +41,12 @@ async function fetchPurchases(search = '') {
   }
 }
 
-async function createPurchase(payload) {
-  const ok = await swalConfirm('Add purchase?', 'This will create a new purchase.');
+export async function createSupplier(payload) {
+  const ok = await swalConfirm('Add supplier?', 'This will create a new supplier.');
   if (!ok) return { cancelled: true };
 
   try {
-    const res = await fetch(PortPurchases, {
+    const res = await fetch(PortSuppliers, {
       method: 'POST',
       headers,
       body: JSON.stringify(payload),
@@ -56,8 +56,8 @@ async function createPurchase(payload) {
 
     await swalFire({
       icon: 'success',
-      title: 'Purchase Created',
-      text: 'New purchase has been added.',
+      title: 'Supplier Created',
+      text: 'New supplier has been added.',
       timer: 1400,
       showConfirmButton: false,
     });
@@ -68,12 +68,12 @@ async function createPurchase(payload) {
   }
 }
 
-async function updatePurchase(id, payload) {
-  const ok = await swalConfirm('Update purchase?', 'Save changes to this purchase?');
+export async function updateSupplier(id, payload) {
+  const ok = await swalConfirm('Update supplier?', 'Save changes to this supplier?');
   if (!ok) return { cancelled: true };
 
   try {
-    const res = await fetch(`${PortPurchases}/${id}`, {
+    const res = await fetch(`${PortSuppliers}/${id}`, {
       method: 'PUT',
       headers,
       body: JSON.stringify(payload),
@@ -83,7 +83,7 @@ async function updatePurchase(id, payload) {
 
     await swalFire({
       icon: 'success',
-      title: 'Purchase Updated',
+      title: 'Supplier Updated',
       text: 'Changes saved successfully.',
       timer: 1400,
       showConfirmButton: false,
@@ -95,30 +95,30 @@ async function updatePurchase(id, payload) {
   }
 }
 
-async function deletePurchase(id, displayLabel) {
-  const result = await swalFire({
-    title: 'Delete purchase?',
-    text: displayLabel ? `This will remove Purchase #${displayLabel}.` : 'This will remove the purchase.',
-    icon: 'warning',
-    showCancelButton: true,
-    confirmButtonColor: '#d33',
-    cancelButtonColor: '#3085d6',
-    confirmButtonText: 'Yes, delete it',
-    cancelButtonText: 'Cancel',
-    reverseButtons: false,
-    focusCancel: true,
-  });
-  if (!result.isConfirmed) return { cancelled: true };
-
+export async function deleteSupplier(id, displayName = '') {
   try {
-    const res = await fetch(`${PortPurchases}/${id}`, { method: 'DELETE' });
+    const result = await swalFire({
+      title: 'Delete supplier?',
+      text: displayName ? `Delete "${displayName}"? This cannot be undone.` : 'This cannot be undone.',
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#d33',
+      cancelButtonColor: '#3085d6',
+      confirmButtonText: 'Yes, delete it',
+      cancelButtonText: 'Cancel',
+      reverseButtons: false, 
+      focusCancel: true,
+    });
+    if (!result.isConfirmed) return { cancelled: true };
+
+    const res = await fetch(`${PortSuppliers}/${id}`, { method: 'DELETE' });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Delete failed');
 
     await swalFire({
       icon: 'success',
       title: 'Deleted',
-      text: 'Purchase has been deleted.',
+      text: 'Supplier has been deleted.',
       timer: 1200,
       showConfirmButton: false,
     });
@@ -129,5 +129,5 @@ async function deletePurchase(id, displayLabel) {
   }
 }
 
-const PurchasesCRUD = { fetchPurchases, createPurchase, updatePurchase, deletePurchase };
-export default PurchasesCRUD;
+const SuppliersCRUD = { fetchSuppliers, createSupplier, updateSupplier, deleteSupplier };
+export default SuppliersCRUD;

@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Generation Time: Sep 06, 2025 at 08:59 AM
+-- Generation Time: Sep 06, 2025 at 06:29 PM
 -- Server version: 10.4.32-MariaDB
 -- PHP Version: 8.0.30
 
@@ -105,7 +105,7 @@ INSERT INTO `products` (`product_id`, `sku`, `product_name`, `description`, `uni
 (13, '1000000003', 'Aluminum Ladder 6ft', 'asf', 'pcs', 124, 2, 15.00, 10.00, 'In Stock', '2025-08-28 13:32:10', '2025-08-30 15:05:02'),
 (14, '0220225541', 'asf', 'asf', 'pc', 20, 1, 1500.00, 50.00, 'In Stock', '2025-08-28 13:32:49', '2025-08-28 13:32:49'),
 (16, '1000000004', 'LED Bulb 9W', 'Warm white', 'pc', 150, 2, 45.00, 80.00, 'In Stock', '2025-08-30 14:44:08', '2025-08-30 14:44:08'),
-(18, '9783809638', 'AAAAA', 'ELO', 'pcs', 17, 1, 120.00, 130.00, 'In Stock', '2025-08-30 15:07:24', '2025-08-30 15:40:37');
+(18, '9783809638', 'AAAAABBBB', 'ELO', 'pcs', 17, 1, 120.00, 130.00, 'In Stock', '2025-08-30 15:07:24', '2025-09-06 13:27:34');
 
 -- --------------------------------------------------------
 
@@ -234,17 +234,20 @@ CREATE TABLE `suppliers` (
   `supplier_id` int(11) NOT NULL,
   `supplier_name` varchar(100) NOT NULL,
   `contact_name` varchar(100) DEFAULT NULL,
-  `contact_number` varchar(100) DEFAULT NULL
+  `contact_number` varchar(100) DEFAULT NULL,
+  `email` varchar(150) DEFAULT NULL,
+  `address` varchar(255) DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
 -- Dumping data for table `suppliers`
 --
 
-INSERT INTO `suppliers` (`supplier_id`, `supplier_name`, `contact_name`, `contact_number`) VALUES
-(1, 'IT Supply', 'Maria Santos', '09171234567'),
-(2, 'Beta Distributors', 'Juan Dela Cruz', '09998887777'),
-(3, 'Electronic Supply', 'Liza Reyes', '09051239876');
+INSERT INTO `suppliers` (`supplier_id`, `supplier_name`, `contact_name`, `contact_number`, `email`, `address`) VALUES
+(1, 'IT Supply', 'Maria Santos', '09171234567', 'itsupply@gmail.com', 'QC'),
+(2, 'Beta Distributors', 'Juan Dela Cruz', '09998887777', 'betadistributors@gmail.com', 'MNL'),
+(3, 'Electronic Supply', 'Liza Reyes', '09051239876', 'electronicsupply@gmail.com', 'BGB'),
+(5, 'Hatdog Supplier', 'Jane Doe', '09569610529', 'hatdog@gmail.com', 'DCN');
 
 -- --------------------------------------------------------
 
@@ -362,7 +365,7 @@ ALTER TABLE `basic_information`
 -- AUTO_INCREMENT for table `products`
 --
 ALTER TABLE `products`
-  MODIFY `product_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=19;
+  MODIFY `product_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=21;
 
 --
 -- AUTO_INCREMENT for table `purchases`
@@ -392,7 +395,7 @@ ALTER TABLE `stock_movements`
 -- AUTO_INCREMENT for table `suppliers`
 --
 ALTER TABLE `suppliers`
-  MODIFY `supplier_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
+  MODIFY `supplier_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=6;
 
 --
 -- AUTO_INCREMENT for table `warehouse`
