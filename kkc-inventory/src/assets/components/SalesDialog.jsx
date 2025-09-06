@@ -1,9 +1,13 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Dialog, DialogTitle, DialogContent, DialogActions,
-  IconButton, TextField, MenuItem, Button, Box
+  IconButton, TextField, MenuItem, Button, Box,
+  Typography,
+  Divider,
+  Stack
 } from "@mui/material";
-import { MdClose } from "react-icons/md";
+import { MdClose, MdDelete } from "react-icons/md";
+import AttachmentUploader from "./AttachmentsUploader";
 
 const DS = [
   { value: "Pending", label: "Pending" },
@@ -17,25 +21,34 @@ const PS = [
 ];
 
 const fieldSx = {
-"& .MuiInputBase-root": { minHeight: 40 },
-"& .MuiFormHelperText-root": { minHeight: 20 },
-"& .MuiFormLabel-root": { whiteSpace: "nowrap" },
+  "& .MuiInputBase-root": { minHeight: 40 },
+  "& .MuiFormHelperText-root": { minHeight: 20 },
+  "& .MuiFormLabel-root": { whiteSpace: "nowrap" },
 };
 
 export default function SalesDialog({ open, mode = "create", accountId, productsData = [], warehousesData = [], onClose, onSubmit, onSwitchToEdit, }) {
   const disabled = mode === "view";
 
+  const [attachmentIsDisabled, setAttachmentIsDisabled] = useState(true);
+  const [attachments, setAttachments] = useState([]);
+
   // form state
   const [form, setForm] = useState({
-    accountId: accountId,
-    product_id: "",
+    /* accountId: accountId, */
     warehouse_id: "",
+    product_id: "",
     sale_date: "",
     customer_name: "",
+    product_quantity: "",
     total_sale: "",
-    delivery_status: "Pending",
     sale_payment_status: "Partial",
-  }); 
+    total_delivery_quantity: "",
+    product_quantity: "",
+    total_delivered: "",
+    total_delivery_quantity: "",
+    delivery_status: "Pending",
+    attachments,
+  });
 
   const handleChange = (field) => (e) => {
     setForm({ ...form, [field]: e.target.value });
@@ -44,14 +57,32 @@ export default function SalesDialog({ open, mode = "create", accountId, products
   const handleSubmit = () => {
     const payload = {
       ...form,
-      total_sale: Number(form.total_sale || 0), 
+      total_sale: Number(form.total_sale || 0),
+      attachments,
     };
 
-    /* console.log("Submitting payload:", payload);  */
-    onSubmit?.(payload); 
-    onClose(); 
+    console.log("Submitting payload:", payload); 
+    onSubmit?.(payload);
+    onClose();
   };
 
+  const selectedProduct = productsData.find(p => p.product_id === form.product_id); 
+
+  useEffect(() => {
+    const allRequiredFilled =
+      form.warehouse_id &&
+      form.product_id &&
+      form.sale_date &&
+      form.customer_name &&
+      form.product_quantity &&
+      form.total_delivery_quantity &&
+      form.total_delivered;
+
+    setAttachmentIsDisabled(!allRequiredFilled);
+
+    console.log("All required filled?", allRequiredFilled);
+  }, [form]);
+ 
   return (
     <Dialog
       open={open}
@@ -71,8 +102,8 @@ export default function SalesDialog({ open, mode = "create", accountId, products
         {mode === "create"
           ? "Add Sale"
           : mode === "edit"
-          ? "Edit Sale"
-          : "View Sale"}
+            ? "Edit Sale"
+            : "View Sale"}
         <IconButton onClick={onClose} sx={{ position: "absolute", right: 8, top: 8 }}>
           <MdClose />
         </IconButton>
@@ -82,26 +113,22 @@ export default function SalesDialog({ open, mode = "create", accountId, products
         <Box
           sx={{
             display: "grid",
-            gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr", md: "repeat(3, minmax(0, 1fr))" },
+            gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr", md: "repeat(4, minmax(0, 1fr))" },
             gap: 3,
           }}
         >
-          <TextField
-            select
-            label="Product"
-            size="small"
-            fullWidth
-            value={form.product_id}
-            onChange={handleChange("product_id")}
-            disabled={disabled}
-            sx={fieldSx}
-          >
-            {productsData.map((d) => (
-              <MenuItem key={d.product_id} value={d.product_id}>
-                {d.product_name}
-              </MenuItem>
-            ))}
-          </TextField>
+          <Box sx={{ gridColumn: "1 / -1" }}>
+            <Box sx={{ display: "flex", alignItems: "center", mt: 2, mb: 1 }}>
+              <Typography variant="subtitle2" sx={{ fontWeight: "bold" }}>
+                Product Information
+              </Typography>
+              <Typography component="span" sx={{ color: "red", ml: 0.5 }}>
+                *
+              </Typography>
+            </Box>
+            <Divider sx={{ mb: 2 }} />
+          </Box>
+
 
           <TextField
             select
@@ -121,6 +148,34 @@ export default function SalesDialog({ open, mode = "create", accountId, products
           </TextField>
 
           <TextField
+            select
+            label="Product"
+            size="small"
+            fullWidth
+            value={form.product_id}
+            onChange={handleChange("product_id")}
+            disabled={disabled}
+            sx={fieldSx}
+          >
+            {productsData.map((d) => (
+              <MenuItem key={d.product_id} value={d.product_id}>
+                {d.product_name}
+              </MenuItem>
+            ))}
+          </TextField>
+
+          <TextField
+            label="Selling Price"
+            size="small"
+            fullWidth
+            type="number"
+            value={selectedProduct ? selectedProduct.selling_price : 0}
+            onChange={handleChange("selling_price")}
+            disabled={true}
+            sx={fieldSx}
+          />
+
+          <TextField
             label="Date"
             type="date"
             size="small"
@@ -131,6 +186,19 @@ export default function SalesDialog({ open, mode = "create", accountId, products
             sx={fieldSx}
             InputLabelProps={{ shrink: true }}
           />
+
+          <Box sx={{ gridColumn: "1 / -1" }}>
+            <Box sx={{ display: "flex", alignItems: "center", mt: 2, mb: 1 }}>
+              <Typography variant="subtitle2" sx={{ fontWeight: "bold" }}>
+                Sale Information
+              </Typography>
+              <Typography component="span" sx={{ color: "red", ml: 0.5 }}>
+                *
+              </Typography>
+            </Box>
+            <Divider sx={{ mb: 2 }} />
+          </Box>
+
 
           <TextField
             label="Customer Name"
@@ -143,13 +211,92 @@ export default function SalesDialog({ open, mode = "create", accountId, products
           />
 
           <TextField
+            label="Product Quantity Sold"
+            size="small"
+            fullWidth
+            type="number"
+            value={form.product_quantity}
+            onChange={handleChange("product_quantity")}
+            disabled={disabled}
+            sx={fieldSx}
+          />
+
+          <TextField
             label="Total Sale"
             size="small"
             fullWidth
             type="number"
-            value={form.total_sale}
+            value={selectedProduct ? selectedProduct.selling_price * form.product_quantity : 0}
             onChange={handleChange("total_sale")}
+            disabled={true}
+            sx={fieldSx}
+          />
+
+          <TextField
+            select
+            label="Sale Payment Status"
+            size="small"
+            fullWidth
+            value={form.sale_payment_status}
+            onChange={handleChange("sale_payment_status")}
             disabled={disabled}
+            sx={fieldSx}
+          >
+            {PS.map((d) => (
+              <MenuItem key={d.value} value={d.value}>
+                {d.label}
+              </MenuItem>
+            ))}
+          </TextField>
+
+          <Box sx={{ gridColumn: "1 / -1" }}>
+            <Box sx={{ display: "flex", alignItems: "center", mt: 2, mb: 1 }}>
+              <Typography variant="subtitle2" sx={{ fontWeight: "bold" }}>
+                Delivery Information
+              </Typography>
+              <Typography component="span" sx={{ color: "red", ml: 0.5 }}>
+                *
+              </Typography>
+            </Box>
+            <Divider sx={{ mb: 2 }} />
+          </Box>
+
+          <TextField
+            label="Total Delivery Quantity"
+            size="small"
+            fullWidth
+            type="number"
+            value={form.total_delivery_quantity ? form.total_delivery_quantity : ""}
+            onChange={handleChange("total_delivery_quantity")}
+            disabled={disabled}
+            sx={fieldSx}
+          />
+
+          <TextField
+            label="Total of Successfully Delivered"
+            size="small"
+            fullWidth
+            type="number"
+            value={form.total_delivered ? form.total_delivered : ""}
+            onChange={handleChange("total_delivered")}
+            disabled={disabled}
+            sx={fieldSx}
+          />
+
+          <TextField
+            label="Remaining Product/s to be Delivered"
+            size="small"
+            fullWidth
+            type="number"
+            value={
+              form.total_delivery_quantity && form.total_delivered
+                ? form.total_delivery_quantity - form.total_delivered
+                : form.total_delivery_quantity
+            }
+            onChange={handleChange("total_delivery_quantity")}
+            disabled={true}
+            InputProps={{ readOnly: true }}
+            InputLabelProps={{ shrink: true }}
             sx={fieldSx}
           />
 
@@ -170,26 +317,22 @@ export default function SalesDialog({ open, mode = "create", accountId, products
             ))}
           </TextField>
 
-          <TextField
-            select
-            label="Sale Payment Status"
-            size="small"
-            fullWidth
-            value={form.sale_payment_status}
-            onChange={handleChange("sale_payment_status")}
-            disabled={disabled}
-            sx={fieldSx}
-          >
-            {PS.map((d) => (
-              <MenuItem key={d.value} value={d.value}>
-                {d.label}
-              </MenuItem>
-            ))}
-          </TextField>
+          <Box sx={{ gridColumn: "1 / -1" }}>
+            <Typography variant="subtitle2" sx={{ fontWeight: "bold", mt: 2, mb: 0.5 }}>
+              Attachment Details (Optional)
+            </Typography>
+            <Divider sx={{ mb: 2 }} />
+          </Box>
 
-          <Box />
+          <AttachmentUploader
+              isDisabled={attachmentIsDisabled}
+              attachments={attachments}
+              onChange={setAttachments}
+            />
+
         </Box>
       </DialogContent>
+
 
       <DialogActions sx={{ px: 3, py: 2 }}>
         {mode === "view" ? (

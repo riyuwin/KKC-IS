@@ -7,7 +7,7 @@ import PurchaseDialog from "../components/PurchaseDialog";
 import SalesDialog from "../components/SalesDialog";
 import { RetrieveWarehouse } from "../logics/admin/ManageWarehouse";
 import ProductsCRUD from "../logics/products/ProductsCRUD";
-import { InsertSales } from "../logics/admin/ManageSales";
+import { InsertSales, RetrieveSales } from "../logics/admin/ManageSales";
 
 /* Typescripts ----------------------->>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>*/
 // Header style
@@ -37,14 +37,45 @@ const wrapCellSx = {
 };
 /* Typescripts ----------------------->>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>*/
 
+
+function dateFormat(v) {
+  if (!v) return "";
+  if (typeof v === "string") {
+    const m = v.match(/^(\d{4}-\d{2}-\d{2})/);
+    if (m) {
+      const [y, mo, d] = m[1].split("-").map(Number);
+      const dt = new Date(y, mo - 1, d);
+      return dt.toLocaleDateString("en-US", {
+        month: "long",
+        day: "numeric",
+        year: "numeric",
+      });
+    }
+  }
+  const dt = new Date(v);
+  if (Number.isNaN(dt.getTime())) return String(v);
+  return dt.toLocaleDateString("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
 function Sales() {
   // Modal Variables States
   const [dialogOpen, setDialogOpen] = useState(false);
   const [dialogMode, setDialogMode] = useState(null);
   // Dynamics Variable States
+  const [sales, setSales] = useState([]);
+  const [salesItems, setSalesItems] = useState([]);
+  const [salesDeliveries, setSalesDeliveries] = useState([]);
+  const [salesAttachments, setSalesAttachments] = useState([]);
   const [warehouses, setWarehouses] = useState([]);
   const [products, setProducts] = useState([]);
   const [accountId, setAccountId] = useState(null);
+
+  // Filter Variables
+  const [search, setSearch] = useState("");
 
   useEffect(() => {
     const localStorageUserData = localStorage.getItem("user");
@@ -71,6 +102,14 @@ function Sales() {
   useEffect(() => {
     const fetchAll = async () => {
       try {
+        // Sales
+        const { data: salesData } = await RetrieveSales();
+        setSales(salesData.sales);
+        setSalesDeliveries(salesData.deliveries); 
+        setSalesItems(salesData.items); 
+        setSalesAttachments(salesData.attachments); 
+        console.log("salesData:", salesData);
+
         // Warehouses
         const { data: warehouseData } = await RetrieveWarehouse();
         setWarehouses(warehouseData);
@@ -89,28 +128,36 @@ function Sales() {
     const interval = setInterval(fetchAll, 2000);
     return () => clearInterval(interval);
   }, []);
- 
-  const handleSalesSubmit = (formData) => { 
+
+  const handleSalesSubmit = (formData) => {
     const payload = {
       ...formData,
-      account_id: accountId,  
+      account_id: accountId,
     };
 
-    console.log("Sales Payload:", payload);
-    InsertSales(payload); 
+    /* console.log("Sales Payload:", payload);
+    console.log("accountId accountId:", accountId); */
+    InsertSales(payload);
   };
+ 
+  
+  // Memoized Filtered sales (no sorting)
+  const filteredSales = useMemo(() => {
+    return sales.filter((s) => {
+      const p = products.find((p) => p.product_id === s.product_id);
+
+      return (
+        s.sale_payment_status.toLowerCase().includes(search.toLowerCase()) ||
+        s.delivery_status.toLowerCase().includes(search.toLowerCase()) ||
+        (p &&
+          (p.product_name.toLowerCase().includes(search.toLowerCase()) ||
+          p.supplier_id.toLowerCase().includes(search.toLowerCase())))
+      );
+    });
+  }, [sales, products, search]);
 
 
 
-
-  // Sort
-  const [order, setOrder] = useState("desc");
-  const [orderBy, setOrderBy] = useState("purchase_date");
-  const handleSort = (property) => {
-    const isAsc = orderBy === property && order === "asc";
-    setOrder(isAsc ? "desc" : "asc");
-    setOrderBy(property);
-  };
 
   return (
     <Box sx={{ p: 2, fontFamily: "Poppins, sans-serif", }}>
@@ -142,23 +189,65 @@ function Sales() {
 
           <Table size="small" sx={{ tableLayout: "auto", width: "100%" }}>
             <TableHead sx={{ "& .MuiTableCell-root": headerCellSx }}>
-              <TableRow>
-                <SortableHeader id="number" label="No." order={order} orderBy={orderBy} onSort={handleSort} />
-                <SortableHeader id="supplier_name" label="Date" order={order} orderBy={orderBy} onSort={handleSort} />
-                <SortableHeader id="product_name" label="Customer/Company Name" order={order} orderBy={orderBy} onSort={handleSort} />
-                <SortableHeader id="quantity" label="Product" order={order} orderBy={orderBy} onSort={handleSort} />
-                <SortableHeader id="qty_received" label="Quantity Sold" order={order} orderBy={orderBy} onSort={handleSort} />
-                <SortableHeader id="remaining" label="Delivered" order={order} orderBy={orderBy} onSort={handleSort} />
-                <SortableHeader id="unit_cost" label="Selling Price" order={order} orderBy={orderBy} onSort={handleSort} />
-                <SortableHeader id="total_cost" label="Total" order={order} orderBy={orderBy} onSort={handleSort} />
-                <SortableHeader id="purchase_status" label="Delivery Status" order={order} orderBy={orderBy} onSort={handleSort} />
+              <TableRow> 
+                <TableCell sx={headerCellSx}>No.</TableCell>
+                <TableCell sx={headerCellSx}>Date</TableCell>
+                <TableCell sx={headerCellSx}>Customer/Company Name</TableCell>
+                <TableCell sx={headerCellSx}>Product</TableCell>
+                <TableCell sx={headerCellSx}>Quantity Sold</TableCell>
+                <TableCell sx={headerCellSx}>Delivered</TableCell>
+                <TableCell sx={headerCellSx}>Selling Price</TableCell>
+                <TableCell sx={headerCellSx}>Total</TableCell>
+                <TableCell sx={headerCellSx}>Payment Status</TableCell>
+                <TableCell sx={headerCellSx}>Delivery Status</TableCell> 
                 <TableCell sx={headerCellSx}>Actions</TableCell>
               </TableRow>
             </TableHead>
 
             <TableBody sx={{ "& .MuiTableCell-root": bodyCellSx }}>
-              {/* map rows here */}
+              {filteredSales.map((row, index) => {
+                const p = products.find((prod) => prod.product_id === row.product_id);
+                const sales_item = salesItems.find((salesItems) => salesItems.sales_id === row.sales_id);
+                console.log("ASFSFAS", sales_item)
+
+                return (
+                  <TableRow key={row.sale_id ?? index}>
+                    <TableCell>{index + 1}</TableCell>
+                    <TableCell>{dateFormat(row.sale_date)}</TableCell>
+                    <TableCell>{row.customer_name}</TableCell>
+                    <TableCell>{sales_item ? sales_item.product_name : sales_item.product_id}</TableCell>
+                    <TableCell>{p ? p.supplier_id : "Null"}</TableCell>
+                    <TableCell>{"Null"}</TableCell>
+                    <TableCell>{"Null"}</TableCell>
+                    <TableCell>{"Null"}</TableCell>
+                    <TableCell>{row.sale_payment_status}</TableCell>
+                    <TableCell>{row.delivery_status}</TableCell>
+
+                    <TableCell>
+                      <Stack direction="row" justifyContent="center" spacing={0.5}>
+                        <Tooltip title="View">
+                          <IconButton size="small" color="success" onClick={() => openView(row)}>
+                            <MdVisibility style={{ fontSize: 22 }} />
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title="Edit">
+                          <IconButton size="small" color="primary" onClick={() => openEdit(row)}>
+                            <MdEdit style={{ fontSize: 22 }} />
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title="Delete">
+                          <IconButton size="small" color="error" onClick={() => handleDelete(row)}>
+                            <MdDelete style={{ fontSize: 22 }} />
+                          </IconButton>
+                        </Tooltip>
+                      </Stack>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
             </TableBody>
+
+
           </Table>
 
         </TableContainer>
