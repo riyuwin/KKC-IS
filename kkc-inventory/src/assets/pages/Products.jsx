@@ -1,4 +1,3 @@
-// src/assets/pages/Products.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import {
   Box, Paper, Typography, Button,
@@ -10,7 +9,8 @@ import ProductsCRUD from "../logics/products/ProductsCRUD";
 import ProductDialog from "../components/ProductDialog";
 import SortableHeader, { getComparator, stableSort } from "../components/SortableHeader";
 import Swal from "sweetalert2";
-import SearchBar from "../components/SearchBar"; // ✅ use shared SearchBar
+import SearchBar from "../components/SearchBar";
+import TablePager from "../components/TablePager";
 
 // auto-generated sku/code
 function generateClientSku() {
@@ -288,6 +288,14 @@ function Products() {
             bgcolor: "background.paper",
           }}
         >
+
+    <TablePager
+      data={sortedRows}
+      resetOn={`${order}-${orderBy}-${searchNow}`}
+      initialRowsPerPage={5}
+    >
+      {({ pagedRows, Pagination }) => (
+        <>
           <Table size="small">
             <TableHead sx={{ "& .MuiTableCell-root": headerCellSx }}>
               <TableRow>
@@ -300,14 +308,12 @@ function Products() {
                 <SortableHeader id="selling_price" label="Selling Price" order={order} orderBy={orderBy} onSort={handleSort} />
                 <SortableHeader id="supplier_display" label="Supplier" order={order} orderBy={orderBy} onSort={handleSort} />
                 <SortableHeader id="_stockStatus.label" label="Stock Status" order={order} orderBy={orderBy} onSort={handleSort} />
-                <TableCell sx={{ ...headerCellSx }} width={160}>
-                  Actions
-                </TableCell>
+                <TableCell sx={{ ...headerCellSx }} width={160}>Actions</TableCell>
               </TableRow>
             </TableHead>
 
             <TableBody sx={{ "& .MuiTableCell-root": bodyCellSx }}>
-              {loading && (
+              {loading ? (
                 <TableRow>
                   <TableCell colSpan={10} align="center">
                     <Stack direction="row" spacing={1} justifyContent="center" alignItems="center" py={2}>
@@ -316,9 +322,7 @@ function Products() {
                     </Stack>
                   </TableCell>
                 </TableRow>
-              )}
-
-              {!loading && sortedRows.length === 0 && (
+              ) : pagedRows.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={10} align="center">
                     <Typography variant="body2" color="text.secondary" py={2}>
@@ -326,10 +330,8 @@ function Products() {
                     </Typography>
                   </TableCell>
                 </TableRow>
-              )}
-
-              {!loading &&
-                sortedRows.map((row) => (
+              ) : (
+                pagedRows.map((row) => (
                   <TableRow key={row.product_id ?? row.id ?? row.sku}>
                     <TableCell>{row.product_name}</TableCell>
                     <TableCell>{row.sku}</TableCell>
@@ -362,9 +364,16 @@ function Products() {
                       </Stack>
                     </TableCell>
                   </TableRow>
-                ))}
+                ))
+              )}
             </TableBody>
           </Table>
+
+          {/* The ready-made pagination bar (centered) */}
+          <Pagination />
+        </>
+      )}
+    </TablePager>
         </TableContainer>
       </Paper>
 
