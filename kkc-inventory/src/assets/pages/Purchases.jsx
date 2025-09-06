@@ -10,7 +10,8 @@ import PurchasesCRUD from "../logics/purchases/PurchasesCRUD";
 import SortableHeader, { getComparator, stableSort } from "../components/SortableHeader";
 import PurchaseDialog from "../components/PurchaseDialog";
 import { PortSuppliers, PortProducts } from "../api_ports/api";
-import SearchBar from "../components/SearchBar"; 
+import SearchBar from "../components/SearchBar";
+import TablePager from "../components/TablePager";
 
 function peso(n) {
   if (n === "" || n === null || typeof n === "undefined") return "";
@@ -26,20 +27,12 @@ function dateFormat(v) {
     if (m) {
       const [y, mo, d] = m[1].split("-").map(Number);
       const dt = new Date(y, mo - 1, d);
-      return dt.toLocaleDateString("en-US", {
-        month: "long",
-        day: "numeric",
-        year: "numeric",
-      });
+      return dt.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
     }
   }
   const dt = new Date(v);
   if (Number.isNaN(dt.getTime())) return String(v);
-  return dt.toLocaleDateString("en-US", {
-    month: "long",
-    day: "numeric",
-    year: "numeric",
-  });
+  return dt.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
 }
 
 // SweetAlert helpers
@@ -86,7 +79,7 @@ function Purchases() {
     setOrderBy(property);
   };
 
-
+  // debounce search
   useEffect(() => {
     const t = setTimeout(() => setSearchNow(search), 150);
     return () => clearTimeout(t);
@@ -94,9 +87,7 @@ function Purchases() {
 
   async function loadMeta() {
     try {
-      const [sres, pres] = await Promise.all([
-        fetch(PortSuppliers), fetch(PortProducts)
-      ]);
+      const [sres, pres] = await Promise.all([fetch(PortSuppliers), fetch(PortProducts)]);
       const [sups, prods] = await Promise.all([sres.json(), pres.json()]);
       setSuppliers(Array.isArray(sups) ? sups : []);
       setProducts(Array.isArray(prods) ? prods : []);
@@ -120,26 +111,21 @@ function Purchases() {
   useEffect(() => { loadMeta(); }, []);
   useEffect(() => { load(); }, [searchNow]);
 
-  // computed rows for sorting / display
-  const computedRows = useMemo(() => {
-    return rows.map(r => ({
-      ...r,
-      display_total_cost: r.total_cost ?? r.purchase_total_cost ?? 0,
-    }));
-  }, [rows]);
-
+  // computed + sorted
+  const computedRows = useMemo(
+    () => rows.map(r => ({ ...r, display_total_cost: r.total_cost ?? r.purchase_total_cost ?? 0 })),
+    [rows]
+  );
   const sortedRows = useMemo(
     () => stableSort(computedRows, getComparator(order, orderBy)),
     [computedRows, order, orderBy]
   );
 
-  // Header style
+  // styles
   const headerCellSx = {
     py: 3.0, px: 0.75, fontSize: "0.90rem", fontWeight: 700,
     bgcolor: "#706f6fff", textAlign: "center", color: "white",
   };
-
-  // Body style
   const bodyCellSx = {
     textAlign: "center",
     fontSize: "0.90rem",
@@ -148,8 +134,6 @@ function Purchases() {
     overflow: "hidden",
     textOverflow: "ellipsis",
   };
-
-  // Wrapping Cell Style (no ellipses)
   const wrapCellSx = {
     whiteSpace: "normal",
     wordBreak: "break-word",
@@ -159,7 +143,7 @@ function Purchases() {
     px: 1.25,
   };
 
-  // Dialog controls
+  // dialog controls
   const closeDialog = () => { setOpen(false); setSelectedId(null); setFormData({}); };
   const openCreate = () => { setDialogMode("create"); setSelectedId(null); setFormData({}); setOpen(true); };
   const openView = (row) => {
@@ -238,109 +222,119 @@ function Purchases() {
             bgcolor: "background.paper",
           }}
         >
-          <Table size="small" sx={{ tableLayout: "fixed" }}>
-            <colgroup>
-              <col style={{ width: "9%" }} />   {/* Date */}
-              <col style={{ width: "10%" }} />  {/* Supplier */}
-              <col style={{ width: "11%" }} />  {/* Product */}
-              <col style={{ width: "10%" }} />  {/* Purchased */}
-              <col style={{ width: "10%" }} />  {/* Received */}
-              <col style={{ width: "9%" }} />   {/* Remaining */}
-              <col style={{ width: "7%" }} />   {/* Unit ₱ */}
-              <col style={{ width: "8%" }} />   {/* Total ₱ */}
-              <col style={{ width: "10%" }} />  {/* Order */}
-              <col style={{ width: "8%" }} />   {/* Payment */}
-              <col style={{ width: "8%" }} />   {/* Actions */}
-            </colgroup>
+          <TablePager
+            data={sortedRows}
+            resetOn={`${order}-${orderBy}-${searchNow}`}
+            initialRowsPerPage={5}
+            align="left"
+          >
+            {({ pagedRows, Pagination }) => (
+              <>
+                <Table size="small" sx={{ tableLayout: "fixed" }}>
+                  <colgroup>
+                    <col style={{ width: "9%" }} />   {/* Date */}
+                    <col style={{ width: "10%" }} />  {/* Supplier */}
+                    <col style={{ width: "11%" }} />  {/* Product */}
+                    <col style={{ width: "10%" }} />  {/* Purchased */}
+                    <col style={{ width: "10%" }} />  {/* Received */}
+                    <col style={{ width: "9%" }} />   {/* Remaining */}
+                    <col style={{ width: "7%" }} />   {/* Unit ₱ */}
+                    <col style={{ width: "8%" }} />   {/* Total ₱ */}
+                    <col style={{ width: "10%" }} />  {/* Order */}
+                    <col style={{ width: "8%" }} />   {/* Payment */}
+                    <col style={{ width: "8%" }} />   {/* Actions */}
+                  </colgroup>
 
-            <TableHead sx={{ "& .MuiTableCell-root": headerCellSx }}>
-              <TableRow>
-                <SortableHeader id="purchase_date" label="Date" order={order} orderBy={orderBy} onSort={handleSort} />
-                <SortableHeader id="supplier_name" label="Supplier" order={order} orderBy={orderBy} onSort={handleSort} />
-                <SortableHeader id="product_name" label="Product" order={order} orderBy={orderBy} onSort={handleSort} />
-                <SortableHeader id="quantity" label="Purchased" order={order} orderBy={orderBy} onSort={handleSort} />
-                <SortableHeader id="qty_received" label="Received" order={order} orderBy={orderBy} onSort={handleSort} />
-                <SortableHeader id="remaining" label="Remaining" order={order} orderBy={orderBy} onSort={handleSort} />
-                <SortableHeader id="unit_cost" label="Unit ₱" order={order} orderBy={orderBy} onSort={handleSort} />
-                <SortableHeader id="total_cost" label="Total ₱" order={order} orderBy={orderBy} onSort={handleSort} />
-                <SortableHeader id="purchase_status" label="Order" order={order} orderBy={orderBy} onSort={handleSort} />
-                <SortableHeader id="purchase_payment_status" label="Payment" order={order} orderBy={orderBy} onSort={handleSort} />
-                <TableCell sx={headerCellSx}>Actions</TableCell>
-              </TableRow>
-            </TableHead>
+                  <TableHead sx={{ "& .MuiTableCell-root": headerCellSx }}>
+                    <TableRow>
+                      <SortableHeader id="purchase_date" label="Date" order={order} orderBy={orderBy} onSort={handleSort} />
+                      <SortableHeader id="supplier_name" label="Supplier" order={order} orderBy={orderBy} onSort={handleSort} />
+                      <SortableHeader id="product_name" label="Product" order={order} orderBy={orderBy} onSort={handleSort} />
+                      <SortableHeader id="quantity" label="Purchased" order={order} orderBy={orderBy} onSort={handleSort} />
+                      <SortableHeader id="qty_received" label="Received" order={order} orderBy={orderBy} onSort={handleSort} />
+                      <SortableHeader id="remaining" label="Remaining" order={order} orderBy={orderBy} onSort={handleSort} />
+                      <SortableHeader id="unit_cost" label="Unit ₱" order={order} orderBy={orderBy} onSort={handleSort} />
+                      <SortableHeader id="total_cost" label="Total ₱" order={order} orderBy={orderBy} onSort={handleSort} />
+                      <SortableHeader id="purchase_status" label="Order" order={order} orderBy={orderBy} onSort={handleSort} />
+                      <SortableHeader id="purchase_payment_status" label="Payment" order={order} orderBy={orderBy} onSort={handleSort} />
+                      <TableCell sx={headerCellSx}>Actions</TableCell>
+                    </TableRow>
+                  </TableHead>
 
-            <TableBody sx={{ "& .MuiTableCell-root": bodyCellSx }}>
-              {loading && (
-                <TableRow>
-                  <TableCell colSpan={11}>
-                    <Stack direction="row" spacing={1} justifyContent="center" alignItems="center" py={2}>
-                      <CircularProgress size={18} />
-                      <Typography variant="body2">Loading…</Typography>
-                    </Stack>
-                  </TableCell>
-                </TableRow>
-              )}
+                  <TableBody sx={{ "& .MuiTableCell-root": bodyCellSx }}>
+                    {loading ? (
+                      <TableRow>
+                        <TableCell colSpan={11}>
+                          <Stack direction="row" spacing={1} justifyContent="center" alignItems="center" py={2}>
+                            <CircularProgress size={18} />
+                            <Typography variant="body2">Loading…</Typography>
+                          </Stack>
+                        </TableCell>
+                      </TableRow>
+                    ) : pagedRows.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={11}>
+                          <Typography variant="body2" color="text.secondary" py={2}>
+                            No purchases found.
+                          </Typography>
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      pagedRows.map((row) => (
+                        <TableRow key={`${row.purchase_id}-${row.purchase_item_id}`}>
+                          <TableCell sx={wrapCellSx}>{dateFormat(row.purchase_date)}</TableCell>
 
-              {!loading && sortedRows.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={11}>
-                    <Typography variant="body2" color="text.secondary" py={2}>
-                      No purchases found.
-                    </Typography>
-                  </TableCell>
-                </TableRow>
-              )}
+                          <TableCell title={row.supplier_name}>{row.supplier_name}</TableCell>
+                          <TableCell title={row.product_name}>{row.product_name}</TableCell>
 
-              {!loading && sortedRows.map((row) => (
-                <TableRow key={`${row.purchase_id}-${row.purchase_item_id}`}>
-                  <TableCell sx={wrapCellSx}>
-                    {dateFormat(row.purchase_date)}
-                  </TableCell>
+                          <TableCell title={String(row.quantity)}>{row.quantity}</TableCell>
+                          <TableCell title={String(row.qty_received)}>{row.qty_received}</TableCell>
+                          <TableCell title={String(row.remaining)}>{row.remaining}</TableCell>
 
-                  <TableCell title={row.supplier_name}>{row.supplier_name}</TableCell>
-                  <TableCell title={row.product_name}>{row.product_name}</TableCell>
+                          <TableCell title={peso(row.unit_cost)}>{peso(row.unit_cost)}</TableCell>
+                          <TableCell title={peso(row.total_cost)}>{peso(row.total_cost)}</TableCell>
 
-                  <TableCell title={String(row.quantity)}>{row.quantity}</TableCell>
-                  <TableCell title={String(row.qty_received)}>{row.qty_received}</TableCell>
-                  <TableCell title={String(row.remaining)}>{row.remaining}</TableCell>
+                          <TableCell sx={wrapCellSx}>
+                            <Chip
+                              size="small"
+                              color={row.remaining === 0 ? "success" : "warning"}
+                              label={row.purchase_status}
+                              sx={{ px: 0.9, maxWidth: "none" }}
+                            />
+                          </TableCell>
 
-                  <TableCell title={peso(row.unit_cost)}>{peso(row.unit_cost)}</TableCell>
-                  <TableCell title={peso(row.total_cost)}>{peso(row.total_cost)}</TableCell>
+                          <TableCell sx={wrapCellSx}>{row.purchase_payment_status}</TableCell>
 
-                  <TableCell sx={wrapCellSx}>
-                    <Chip
-                      size="small"
-                      color={row.remaining === 0 ? "success" : "warning"}
-                      label={row.purchase_status}
-                      sx={{ px: 0.9, maxWidth: "none" }}
-                    />
-                  </TableCell>
+                          <TableCell>
+                            <Stack direction="row" justifyContent="center" spacing={0.5}>
+                              <Tooltip title="View">
+                                <IconButton size="small" color="success" onClick={() => openView(row)}>
+                                  <MdVisibility style={{ fontSize: 22 }} />
+                                </IconButton>
+                              </Tooltip>
+                              <Tooltip title="Edit">
+                                <IconButton size="small" color="primary" onClick={() => openEdit(row)}>
+                                  <MdEdit style={{ fontSize: 22 }} />
+                                </IconButton>
+                              </Tooltip>
+                              <Tooltip title="Delete">
+                                <IconButton size="small" color="error" onClick={() => handleDelete(row)}>
+                                  <MdDelete style={{ fontSize: 22 }} />
+                                </IconButton>
+                              </Tooltip>
+                            </Stack>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
 
-                  <TableCell sx={wrapCellSx}>{row.purchase_payment_status}</TableCell>
-
-                  <TableCell>
-                    <Stack direction="row" justifyContent="center" spacing={0.5}>
-                      <Tooltip title="View">
-                        <IconButton size="small" color="success" onClick={() => openView(row)}>
-                          <MdVisibility style={{ fontSize: 22 }} />
-                        </IconButton>
-                      </Tooltip>
-                      <Tooltip title="Edit">
-                        <IconButton size="small" color="primary" onClick={() => openEdit(row)}>
-                          <MdEdit style={{ fontSize: 22 }} />
-                        </IconButton>
-                      </Tooltip>
-                      <Tooltip title="Delete">
-                        <IconButton size="small" color="error" onClick={() => handleDelete(row)}>
-                          <MdDelete style={{ fontSize: 22 }} />
-                        </IconButton>
-                      </Tooltip>
-                    </Stack>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+                {/* pager */}
+                <Pagination />
+              </>
+            )}
+          </TablePager>
         </TableContainer>
       </Paper>
 
