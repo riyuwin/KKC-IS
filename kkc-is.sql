@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Generation Time: Sep 05, 2025 at 07:01 PM
+-- Generation Time: Sep 06, 2025 at 08:59 AM
 -- Server version: 10.4.32-MariaDB
 -- PHP Version: 8.0.30
 
@@ -46,7 +46,8 @@ CREATE TABLE `accounts` (
 INSERT INTO `accounts` (`account_id`, `warehouse_id`, `fullname`, `username`, `email`, `password`, `role`, `added_at`, `updated_at`) VALUES
 (3, 1, 'Xenia Angelica Velacruz', 'Xenia', 'xeniaangelicavelacruz@gmail.com', '$2b$10$YB0EevQmUEoC3ZKcfNJfRO9sm98dMSvaUHOnfAk.JvnobNBrI4FBy', 'Admin', '2025-08-29 12:49:49', '2025-08-29 13:42:39'),
 (4, 2, 'John Erwin Sayno Albos', 'Janjan', 'johnerwinalbos@gmail.com', '$2b$10$R3lGGeLlp2qzp.z1vtkYr.7d9s7IWt3wzQIA3ilQxadKYfBbzQapS', 'Admin', '2025-08-29 17:53:13', '2025-08-29 13:42:39'),
-(6, 6, 'Test', 'Testing', 'test@gmali.com', '$2b$10$NaoRBCWVWei4A4Y5sResoOre9WsVh7VhOBd63pF.oIjPDQ/GrITcW', 'Warehouse', '2025-08-29 21:04:57', '2025-08-29 13:56:27');
+(6, 6, 'Test', 'Testing', 'test@gmali.com', '$2b$10$NaoRBCWVWei4A4Y5sResoOre9WsVh7VhOBd63pF.oIjPDQ/GrITcW', 'Warehouse', '2025-08-29 21:04:57', '2025-08-29 13:56:27'),
+(9, 1, 'Jane Doe', 'jane123', 'jane@gmail.com', '$2b$10$MJQuzRmlhiscx/1cX6UyRORQSQtA.J6kk/1DdXNNcu3LJZQRsLcNe', 'Warehouse', '2025-09-06 09:40:51', '2025-09-06 01:40:51');
 
 -- --------------------------------------------------------
 
@@ -349,7 +350,7 @@ ALTER TABLE `warehouse`
 -- AUTO_INCREMENT for table `accounts`
 --
 ALTER TABLE `accounts`
-  MODIFY `account_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=9;
+  MODIFY `account_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=10;
 
 --
 -- AUTO_INCREMENT for table `basic_information`
