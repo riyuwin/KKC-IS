@@ -26,13 +26,26 @@ const fieldSx = {
   "& .MuiFormLabel-root": { whiteSpace: "nowrap" },
 };
 
-export default function SalesDialog({ open, mode = "create", accountId, productsData = [], warehousesData = [], onClose, onSubmit, onSwitchToEdit, }) {
+/* WIP */
+function bufferToBase64(buffer) {
+  let binary = "";
+  const bytes = new Uint8Array(buffer);
+  const chunkSize = 0x8000;  
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode.apply(
+      null,
+      bytes.subarray(i, i + chunkSize)
+    );
+  }
+  return window.btoa(binary);
+} 
+
+export default function SalesDialog({ open, mode = "create", accountId, productsData = [], warehousesData = [], salesData, onClose, onSubmit, onSwitchToEdit, }) {
   const disabled = mode === "view";
 
   const [attachmentIsDisabled, setAttachmentIsDisabled] = useState(true);
   const [attachments, setAttachments] = useState([]);
-
-  // form state
+ 
   const [form, setForm] = useState({
     /* accountId: accountId, */
     warehouse_id: "",
@@ -43,9 +56,7 @@ export default function SalesDialog({ open, mode = "create", accountId, products
     total_sale: "",
     sale_payment_status: "Partial",
     total_delivery_quantity: "",
-    product_quantity: "",
     total_delivered: "",
-    total_delivery_quantity: "",
     delivery_status: "Pending",
     attachments,
   });
@@ -61,12 +72,12 @@ export default function SalesDialog({ open, mode = "create", accountId, products
       attachments,
     };
 
-    console.log("Submitting payload:", payload); 
+    console.log("Submitting payload:", payload);
     onSubmit?.(payload);
     onClose();
   };
 
-  const selectedProduct = productsData.find(p => p.product_id === form.product_id); 
+  const selectedProduct = productsData.find(p => p.product_id === form.product_id);
 
   useEffect(() => {
     const allRequiredFilled =
@@ -82,7 +93,35 @@ export default function SalesDialog({ open, mode = "create", accountId, products
 
     console.log("All required filled?", allRequiredFilled);
   }, [form]);
- 
+
+  useEffect(() => {
+    if (mode === "Edit" || mode === "View") {
+      const normalizedAttachments = (salesData?.attachments || []).map((att) => {
+        const base64String = bufferToBase64(att.file.data);
+        return {
+          ...att,
+          previewUrl: `data:image/*;base64,${base64String}`,  
+        };
+      });
+
+      setForm({
+        warehouse_id: salesData?.sale?.warehouse_id,
+        product_id: salesData?.sales_item?.product_id,
+        sale_date: salesData?.sales_item?.sale_date,
+        customer_name: salesData?.sale?.customer_name,
+        product_quantity: salesData?.sales_item?.product_quantity,
+        total_sale: salesData?.sale?.total_sale,
+        sale_payment_status: salesData?.sale?.sale_payment_status,
+        total_delivery_quantity: salesData?.deliveries?.total_delivery_quantity,
+        total_delivered: salesData?.deliveries?.total_delivered,
+        delivery_status: salesData?.sale?.delivery_status,
+        attachments: normalizedAttachments,
+      });
+
+      setAttachments(normalizedAttachments);
+    }
+  }, [mode, salesData]);
+
   return (
     <Dialog
       open={open}
@@ -128,8 +167,7 @@ export default function SalesDialog({ open, mode = "create", accountId, products
             </Box>
             <Divider sx={{ mb: 2 }} />
           </Box>
-
-
+ 
           <TextField
             select
             label="Warehouse"
@@ -322,18 +360,16 @@ export default function SalesDialog({ open, mode = "create", accountId, products
               Attachment Details (Optional)
             </Typography>
             <Divider sx={{ mb: 2 }} />
-          </Box>
+          </Box> 
 
           <AttachmentUploader
-              isDisabled={attachmentIsDisabled}
-              attachments={attachments}
-              onChange={setAttachments}
-            />
-
+            isDisabled={mode === "View" || mode === "View"  ? true : attachmentIsDisabled}
+            attachments={attachments}
+            onChange={setAttachments}
+          />  
         </Box>
       </DialogContent>
-
-
+ 
       <DialogActions sx={{ px: 3, py: 2 }}>
         {mode === "view" ? (
           <Button onClick={onSwitchToEdit} variant="contained">
