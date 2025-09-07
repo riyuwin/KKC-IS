@@ -874,89 +874,171 @@ app.post("/sales", upload.array("attachments"), (req, res) => {
     );
 });
 
-app.get("/sales/:salesId", (req, res) => {
-    const { salesId } = req.params;
+app.put("/sales/:id", upload.array("attachments"), (req, res) => {
+  const salesId = req.params.id;
+  const {
+    account_id,
+    warehouse_id,
+    product_id,
+    sale_date,
+    customer_name,
+    product_quantity,
+    total_sale,
+    sale_payment_status,
+    total_delivery_quantity,
+    total_delivered,
+    delivery_status,
+    attachments: retainedAttachmentsIds, // Array of attachment IDs to retain
+  } = req.body;
 
-    const query = `
-        SELECT  s.id AS sales_id, s.account_id,  s.warehouse_id, s.sale_date, s.customer_name,
-            s.total_sale, s.delivery_status, s.sale_payment_status,
-            si.id AS sales_item_id, si.product_id, sd.id AS sales_delivery_id,
-            sd.total_delivery_quantity, sd.total_delivered,
-            sa.id AS attachment_id, sa.file_name, sa.file
-        FROM sales s
-        LEFT JOIN sales_item si ON si.sales_id = s.id
-        LEFT JOIN sales_deliveries sd ON sd.sales_item_id = si.id
-        LEFT JOIN sales_attachments sa ON sa.sales_delivery_id = sd.id
-        WHERE s.id = ?
-    `;
+  const attachments = req.files || [];
 
-    executeQueryWithCallback(query, [salesId], (err, results) => {
-        if (err) return res.status(500).json({ error: "Failed to fetch sale" });
+  if (
+    !account_id ||
+    !warehouse_id ||
+    !product_id ||
+    !sale_date ||
+    !customer_name ||
+    product_quantity == null ||
+    total_sale == null ||
+    !sale_payment_status ||
+    total_delivery_quantity == null ||
+    total_delivered == null ||
+    !delivery_status
+  ) {
+    return res.status(400).json({ error: "Missing required information." });
+  }
 
-        const sale = {
-            sales_id: null,
-            account_id: null,
-            warehouse_id: null,
-            sale_date: null,
-            customer_name: null,
-            total_sale: null,
-            delivery_status: null,
-            sale_payment_status: null,
-            items: []
-        };
+  const updateSalesQuery = `
+    UPDATE sales 
+    SET account_id = ?, warehouse_id = ?, sale_date = ?, customer_name = ?, 
+        total_sale = ?, delivery_status = ?, sale_payment_status = ?, updated_at = NOW()
+    WHERE sales_id = ?
+  `;
 
-        const itemMap = {};
+  const updateSalesItemQuery = `
+    UPDATE sales_item 
+    SET product_id = ?, updated_at = NOW()
+    WHERE sales_id = ?
+  `;
 
-        results.forEach(row => { 
-            if (!sale.sales_id) {
-                sale.sales_id = row.sales_id;
-                sale.account_id = row.account_id;
-                sale.warehouse_id = row.warehouse_id;
-                sale.sale_date = row.sale_date;
-                sale.customer_name = row.customer_name;
-                sale.total_sale = row.total_sale;
-                sale.delivery_status = row.delivery_status;
-                sale.sale_payment_status = row.sale_payment_status;
-            }
+  const updateSalesDeliveriesQuery = `
+    UPDATE sales_deliveries 
+    SET total_delivery_quantity = ?, total_delivered = ?, updated_at = NOW()
+    WHERE sales_item_id = ?
+  `;
 
-            // sale items
-            if (row.sales_item_id && !itemMap[row.sales_item_id]) {
-                itemMap[row.sales_item_id] = {
-                    sales_item_id: row.sales_item_id,
-                    product_id: row.product_id,
-                    deliveries: []
-                };
-                sale.items.push(itemMap[row.sales_item_id]);
-            }
+  const getExistingAttachmentsQuery = `
+    SELECT attachment_id FROM sales_attachments WHERE sales_delivery_id = ?
+  `;
 
-            // deliveries
-            if (row.sales_delivery_id) {
-                let delivery = itemMap[row.sales_item_id].deliveries.find(d => d.sales_delivery_id === row.sales_delivery_id);
-                if (!delivery) {
-                    delivery = {
-                        sales_delivery_id: row.sales_delivery_id,
-                        total_delivery_quantity: row.total_delivery_quantity,
-                        total_delivered: row.total_delivered,
-                        attachments: []
-                    };
-                    itemMap[row.sales_item_id].deliveries.push(delivery);
-                }
+  const deleteAttachmentsQuery = `
+    DELETE FROM sales_attachments WHERE attachment_id IN (?)
+  `;
 
-                // Attachments
-                if (row.attachment_id) {
-                    delivery.attachments.push({
-                        attachment_id: row.attachment_id,
-                        file_name: row.file_name,
-                        file_data: row.file ? Buffer.from(row.file).toString("base64") : null
+  const insertAttachmentsQuery = `
+    INSERT INTO sales_attachments (sales_delivery_id, file, file_name, uploaded_at, updated_at)
+    VALUES (?, ?, ?, NOW(), NOW())
+  `;
+
+  // STEP 1: Update sales
+  executeQueryWithCallback(
+    updateSalesQuery,
+    [
+      account_id,
+      warehouse_id,
+      sale_date,
+      customer_name,
+      total_sale,
+      delivery_status,
+      sale_payment_status,
+      salesId,
+    ],
+    (err) => {
+      if (err) return res.status(500).json({ error: "Failed to update sales" });
+
+      // STEP 2: Get sales_item_id
+      const getSalesItemIdQuery = `SELECT sales_item_id FROM sales_item WHERE sales_id = ? LIMIT 1`;
+      executeQueryWithCallback(getSalesItemIdQuery, [salesId], (err2, rows) => {
+        if (err2 || !rows.length)
+          return res.status(500).json({ error: "Failed to fetch sales_item_id" });
+
+        const salesItemId = rows[0].sales_item_id;
+
+        // STEP 3: Update sales_item
+        executeQueryWithCallback(updateSalesItemQuery, [product_id, salesId], (err3) => {
+          if (err3) return res.status(500).json({ error: "Failed to update sales item" });
+
+          // STEP 4: Update sales_deliveries
+          executeQueryWithCallback(
+            updateSalesDeliveriesQuery,
+            [total_delivery_quantity, total_delivered, salesItemId],
+            (err4) => {
+              if (err4) return res.status(500).json({ error: "Failed to update deliveries" });
+
+              // STEP 5: Get sales_delivery_id
+              const getDeliveryIdQuery = `
+                SELECT sales_delivery_id FROM sales_deliveries WHERE sales_item_id = ? LIMIT 1
+              `;
+              executeQueryWithCallback(getDeliveryIdQuery, [salesItemId], (err5, rows2) => {
+                if (err5 || !rows2.length)
+                  return res.status(500).json({ error: "Failed to fetch sales_delivery_id" });
+
+                const salesDeliveryId = rows2[0].sales_delivery_id;
+
+                // STEP 6: Handle attachments
+                executeQueryWithCallback(getExistingAttachmentsQuery, [salesDeliveryId], (err6, existingRows) => {
+                  if (err6) return res.status(500).json({ error: "Failed to fetch existing attachments" });
+
+                  const existingIds = existingRows.map(r => r.attachment_id);
+                  const retainedIds = Array.isArray(retainedAttachmentsIds)
+                    ? retainedAttachmentsIds.map(id => Number(id))
+                    : [];
+
+                  // Delete only removed attachments
+                  const toDeleteIds = existingIds.filter(id => !retainedIds.includes(id));
+                  if (toDeleteIds.length > 0) {
+                    executeQueryWithCallback(deleteAttachmentsQuery, [toDeleteIds], (err7) => {
+                      if (err7) return res.status(500).json({ error: "Failed to delete removed attachments" });
+                      insertNewFiles();
                     });
-                }
-            }
-        });
+                  } else {
+                    insertNewFiles();
+                  }
 
-        res.json({ sale });
-    });
-}); 
- 
+                  // Insert newly uploaded files
+                  function insertNewFiles() {
+                    if (!attachments.length) return res.json({ message: "Sales updated successfully" });
+
+                    const insertPromises = attachments.map(file => {
+                      return new Promise((resolve, reject) => {
+                        executeQueryWithCallback(
+                          insertAttachmentsQuery,
+                          [salesDeliveryId, file.buffer, file.originalname],
+                          (err8) => {
+                            if (err8) reject(err8);
+                            else resolve();
+                          }
+                        );
+                      });
+                    });
+
+                    Promise.all(insertPromises)
+                      .then(() => res.json({ message: "Sales updated successfully with attachments" }))
+                      .catch(() => res.status(500).json({ error: "Failed to insert new attachments" }));
+                  }
+                });
+              });
+            }
+          );
+        });
+      });
+    }
+  );
+});
+
+
+
 app.get("/sales", (req, res) => {
     db.query("SELECT * FROM sales", (err, sales) => {
         if (err) return res.status(500).json({ error: err });
@@ -982,160 +1064,159 @@ app.get("/sales", (req, res) => {
     });
 });
 
-
 // DOCUMENTS
 const MAX_FILE_BYTES = 500 * 1024; // 500KB
 const ALLOWED_MIME = new Set([
-  "application/pdf",
-  "application/vnd.openxmlformats-officedocument.wordprocessingml.document", // docx
-  "application/vnd.ms-excel",                                                // xls (older)
-  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",       // xlsx
+    "application/pdf",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document", // docx
+    "application/vnd.ms-excel",                                                // xls (older)
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",       // xlsx
 ]);
 const ALLOWED_EXT = new Set([".pdf", ".docx", ".xls", ".xlsx"]);
 
 const mimeToExt = (mime) => {
-  const map = {
-    "application/pdf": "pdf",
-    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
-    "application/vnd.ms-excel": "xls",
-    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
-  };
-  return map[mime] || "";
+    const map = {
+        "application/pdf": "pdf",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
+        "application/vnd.ms-excel": "xls",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
+    };
+    return map[mime] || "";
 };
 
 const ensureExtension = (name, mime) => {
-  const ext = path.extname(name || "");
-  if (ext) return name;
-  const guess = mimeToExt(mime);
-  return guess ? `${name}.${guess}` : name;
+    const ext = path.extname(name || "");
+    if (ext) return name;
+    const guess = mimeToExt(mime);
+    return guess ? `${name}.${guess}` : name;
 };
 
 const isAllowed = (file) => {
-  const mimeOk = ALLOWED_MIME.has(file.mimetype);
-  const ext = path.extname(file.originalname || "").toLowerCase();
-  const extOk = ALLOWED_EXT.has(ext);
-  return mimeOk && extOk;
+    const mimeOk = ALLOWED_MIME.has(file.mimetype);
+    const ext = path.extname(file.originalname || "").toLowerCase();
+    const extOk = ALLOWED_EXT.has(ext);
+    return mimeOk && extOk;
 };
 
 // GET /documents?search=...
 app.get("/documents", (req, res) => {
-  const search = (req.query.search || "").trim();
-  const like = `%${search}%`;
-  const sql = `
+    const search = (req.query.search || "").trim();
+    const like = `%${search}%`;
+    const sql = `
     SELECT document_id, document_name, file_name, file_type,
            OCTET_LENGTH(file_data) AS file_size, uploaded_at
     FROM documents
     ${search ? "WHERE document_name LIKE ? OR file_name LIKE ? OR file_type LIKE ?" : ""}
     ORDER BY uploaded_at DESC, document_id DESC
   `;
-  const params = search ? [like, like, like] : [];
-  db.query(sql, params, (err, rows) => {
-    if (err) return res.status(500).json({ error: err.message });
-    res.json(rows);
-  });
+    const params = search ? [like, like, like] : [];
+    db.query(sql, params, (err, rows) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json(rows);
+    });
 });
 
 // POST /documents (PDF/DOCX/XLS/XLSX only; 500KB limit)
 app.post("/documents", upload.single("file"), (req, res) => {
-  try {
-    const file = req.file;
-    if (!file) return res.status(400).json({ error: "No file uploaded." });
+    try {
+        const file = req.file;
+        if (!file) return res.status(400).json({ error: "No file uploaded." });
 
-    if (!isAllowed(file)) {
-      return res.status(415).json({ error: "Only PDF, DOCX, XLS, and XLSX are allowed." });
+        if (!isAllowed(file)) {
+            return res.status(415).json({ error: "Only PDF, DOCX, XLS, and XLSX are allowed." });
+        }
+        if (file.size > MAX_FILE_BYTES) {
+            return res.status(413).json({ error: "File too large. Max is 500KB." });
+        }
+
+        const file_type = file.mimetype || "application/octet-stream";
+        const original = file.originalname || "file";
+        const normalized = ensureExtension(original, file_type);
+
+        const document_name = (req.body.document_name || normalized).trim();
+        const file_name = normalized;
+        const file_data = file.buffer;
+
+        const sql = `INSERT INTO documents (document_name, file_name, file_data, file_type) VALUES (?,?,?,?)`;
+        db.query(sql, [document_name, file_name, file_data, file_type], (err, result) => {
+            if (err) return res.status(500).json({ error: err.message });
+            res.json({ message: "Document uploaded", document_id: result.insertId, document_name, file_name, file_type });
+        });
+    } catch (e) {
+        return res.status(500).json({ error: e.message });
     }
-    if (file.size > MAX_FILE_BYTES) {
-      return res.status(413).json({ error: "File too large. Max is 500KB." });
-    }
-
-    const file_type = file.mimetype || "application/octet-stream";
-    const original = file.originalname || "file";
-    const normalized = ensureExtension(original, file_type);
-
-    const document_name = (req.body.document_name || normalized).trim();
-    const file_name = normalized;
-    const file_data = file.buffer;
-
-    const sql = `INSERT INTO documents (document_name, file_name, file_data, file_type) VALUES (?,?,?,?)`;
-    db.query(sql, [document_name, file_name, file_data, file_type], (err, result) => {
-      if (err) return res.status(500).json({ error: err.message });
-      res.json({ message: "Document uploaded", document_id: result.insertId, document_name, file_name, file_type });
-    });
-  } catch (e) {
-    return res.status(500).json({ error: e.message });
-  }
 });
 
 // PUT /documents/:id
 app.put("/documents/:id", (req, res) => {
-  const { id } = req.params;
-  const { document_name } = req.body;
-  if (!document_name || !document_name.trim())
-    return res.status(400).json({ error: "document_name is required" });
+    const { id } = req.params;
+    const { document_name } = req.body;
+    if (!document_name || !document_name.trim())
+        return res.status(400).json({ error: "document_name is required" });
 
-  db.query("UPDATE documents SET document_name=? WHERE document_id=?", [document_name.trim(), id], (err) => {
-    if (err) return res.status(500).json({ error: err.message });
-    res.json({ message: "Document updated" });
-  });
+    db.query("UPDATE documents SET document_name=? WHERE document_id=?", [document_name.trim(), id], (err) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json({ message: "Document updated" });
+    });
 });
 
 // GET /documents/:id/view (inline)
 app.get("/documents/:id/view", (req, res) => {
-  const { id } = req.params;
-  db.query("SELECT document_name, file_name, file_data, file_type FROM documents WHERE document_id=? LIMIT 1", [id], (err, rows) => {
-    if (err) return res.status(500).json({ error: err.message });
-    if (!rows || rows.length === 0) return res.status(404).json({ error: "Not found" });
+    const { id } = req.params;
+    db.query("SELECT document_name, file_name, file_data, file_type FROM documents WHERE document_id=? LIMIT 1", [id], (err, rows) => {
+        if (err) return res.status(500).json({ error: err.message });
+        if (!rows || rows.length === 0) return res.status(404).json({ error: "Not found" });
 
-    const { document_name, file_name, file_data, file_type } = rows[0];
-    const ext = path.extname(file_name || "");
-    const base = (document_name || file_name || "document").replace(/[\\/:*?"<>|]/g, "_").trim() || "document";
-    const finalName = base.toLowerCase().endsWith(ext.toLowerCase()) ? base : base + ext;
+        const { document_name, file_name, file_data, file_type } = rows[0];
+        const ext = path.extname(file_name || "");
+        const base = (document_name || file_name || "document").replace(/[\\/:*?"<>|]/g, "_").trim() || "document";
+        const finalName = base.toLowerCase().endsWith(ext.toLowerCase()) ? base : base + ext;
 
-    res.setHeader("Content-Type", file_type || "application/octet-stream");
-    res.setHeader("Content-Disposition", `inline; filename="${finalName}"`);
-    res.setHeader("Accept-Ranges", "bytes");
-    res.status(200).send(file_data);
-  });
+        res.setHeader("Content-Type", file_type || "application/octet-stream");
+        res.setHeader("Content-Disposition", `inline; filename="${finalName}"`);
+        res.setHeader("Accept-Ranges", "bytes");
+        res.status(200).send(file_data);
+    });
 });
 
 // GET /documents/:id/inline (base64)
 app.get("/documents/:id/inline", (req, res) => {
-  const { id } = req.params;
-  db.query("SELECT document_name, file_name, file_data, file_type FROM documents WHERE document_id=? LIMIT 1", [id], (err, rows) => {
-    if (err) return res.status(500).json({ error: err.message });
-    if (!rows || rows.length === 0) return res.status(404).json({ error: "Not found" });
+    const { id } = req.params;
+    db.query("SELECT document_name, file_name, file_data, file_type FROM documents WHERE document_id=? LIMIT 1", [id], (err, rows) => {
+        if (err) return res.status(500).json({ error: err.message });
+        if (!rows || rows.length === 0) return res.status(404).json({ error: "Not found" });
 
-    const { document_name, file_name, file_data, file_type } = rows[0];
-    const base64 = Buffer.from(file_data).toString("base64");
-    res.json({ document_name, file_name, file_type, base64 });
-  });
+        const { document_name, file_name, file_data, file_type } = rows[0];
+        const base64 = Buffer.from(file_data).toString("base64");
+        res.json({ document_name, file_name, file_type, base64 });
+    });
 });
 
 // GET /documents/:id/download (attachment)
 app.get("/documents/:id/download", (req, res) => {
-  const { id } = req.params;
-  db.query("SELECT document_name, file_name, file_data, file_type FROM documents WHERE document_id=? LIMIT 1", [id], (err, rows) => {
-    if (err) return res.status(500).json({ error: err.message });
-    if (!rows || rows.length === 0) return res.status(404).json({ error: "Not found" });
+    const { id } = req.params;
+    db.query("SELECT document_name, file_name, file_data, file_type FROM documents WHERE document_id=? LIMIT 1", [id], (err, rows) => {
+        if (err) return res.status(500).json({ error: err.message });
+        if (!rows || rows.length === 0) return res.status(404).json({ error: "Not found" });
 
-    const { document_name, file_name, file_data, file_type } = rows[0];
-    const ext = path.extname(file_name || "");
-    const base = (document_name || file_name || "download").replace(/[\\/:*?"<>|]/g, "_").trim() || "download";
-    const finalName = base.toLowerCase().endsWith(ext.toLowerCase()) ? base : base + ext;
+        const { document_name, file_name, file_data, file_type } = rows[0];
+        const ext = path.extname(file_name || "");
+        const base = (document_name || file_name || "download").replace(/[\\/:*?"<>|]/g, "_").trim() || "download";
+        const finalName = base.toLowerCase().endsWith(ext.toLowerCase()) ? base : base + ext;
 
-    res.setHeader("Content-Type", file_type || "application/octet-stream");
-    res.setHeader("Content-Disposition", `attachment; filename="${finalName}"`);
-    res.status(200).send(file_data);
-  });
+        res.setHeader("Content-Type", file_type || "application/octet-stream");
+        res.setHeader("Content-Disposition", `attachment; filename="${finalName}"`);
+        res.status(200).send(file_data);
+    });
 });
 
 // DELETE /documents/:id
 app.delete("/documents/:id", (req, res) => {
-  const { id } = req.params;
-  db.query("DELETE FROM documents WHERE document_id=?", [id], (err) => {
-    if (err) return res.status(500).json({ error: err.message });
-    res.json({ message: "Document deleted" });
-  });
+    const { id } = req.params;
+    db.query("DELETE FROM documents WHERE document_id=?", [id], (err) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json({ message: "Document deleted" });
+    });
 });
 
 

@@ -20,3 +20,17 @@ export function dateFormat(v) {
     year: "numeric",
   });
 }
+
+export const formatDateDMY = (dateStr) => {
+  if (!dateStr) return "";
+
+  // Parse ISO string properly
+  const dt = new Date(dateStr);
+  if (Number.isNaN(dt.getTime())) return String(dateStr);
+
+  const d = String(dt.getDate()).padStart(2, "0");
+  const m = String(dt.getMonth() + 1).padStart(2, "0");
+  const y = dt.getFullYear();
+
+  return `${d}/${m}/${y}`; // dd/mm/yyyy
+};

@@ -1,5 +1,6 @@
 import Swal from 'sweetalert2';
 import { PortSales } from '../../api_ports/api';
+
 export async function InsertSales(payload) {
     try {
         const formData = new FormData();
@@ -46,6 +47,53 @@ export async function InsertSales(payload) {
         });
     }
 }
+
+export async function UpdateSales(id, payload) {
+    try {
+        console.log("EDITDATA:123". payload)
+        const formData = new FormData();
+ 
+        for (const key in payload) {
+            if (key !== "attachments") {
+                formData.append(key, payload[key]);
+            }
+        }
+ 
+        if (payload.attachments && payload.attachments.length > 0) {
+            payload.attachments.forEach(file => {
+                formData.append("attachments", file);
+            });
+        }
+
+        const response = await fetch(`${PortSales}/${id}`, {
+            method: "PUT", 
+            body: formData, 
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(data.error || "Sales update failed.");
+        }
+
+        console.log("Sales updated successfully!", data);
+
+        Swal.fire({
+            icon: 'success',
+            title: 'Sales Update',
+            text: 'Sales updated Successfully!',
+        });
+
+    } catch (err) {
+        console.error("Error:", err.message);
+        Swal.fire({
+            icon: 'error',
+            title: 'Sales Update Failed',
+            text: err.message,
+        });
+    }
+}
+
   
 export async function RetrieveSales() {    
     try {

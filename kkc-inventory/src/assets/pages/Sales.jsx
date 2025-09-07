@@ -6,7 +6,7 @@ import SortableHeader, { getComparator, stableSort } from "../components/Sortabl
 import SalesDialog from "../components/SalesDialog";
 import { RetrieveWarehouse } from "../logics/admin/ManageWarehouse";
 import ProductsCRUD from "../logics/products/ProductsCRUD";
-import { InsertSales, RetrieveSales } from "../logics/admin/ManageSales";
+import { InsertSales, RetrieveSales, UpdateSales } from "../logics/admin/ManageSales";
 import SearchBar from "../components/SearchBar";
 import { bodyCellSx, headerCellSx } from "../components/TableLayout";
 import { dateFormat } from "../components/DateFormat";
@@ -26,6 +26,7 @@ function Sales() {
   const [products, setProducts] = useState([]);
   const [salesData, setSalesData] = useState({});
   const accountDetails = FetchCurrentUser();
+  const [salesId, setSalesId] = useState(null);
 
   // Filter Variables
   const [search, setSearch] = useState("");
@@ -37,6 +38,7 @@ function Sales() {
     if (selectedDialogMode == "View" || selectedDialogMode == "Edit") {
       console.log("Selected Data: ", data)
       setSalesData(data);
+      setSalesId(data?.sale?.sales_id);
     }
   };
 
@@ -70,15 +72,21 @@ function Sales() {
     return () => clearInterval(interval);
   }, []);
 
-  const handleSalesSubmit = (formData) => {
+  const handleSalesSubmit = (formData, dialogMode, selectedSalesId) => {
     const payload = {
       ...formData,
       account_id: accountDetails?.account_id,
     };
 
+    if (dialogMode.toLowerCase() == "edit"){
+      console.log("HATDOG")
+      UpdateSales(selectedSalesId, payload)
+    } else if (dialogMode.toLowerCase() == "add") { 
+      InsertSales(payload);
+    }
+
     /* console.log("Sales Payload:", payload);
     console.log("accountDetails?.account_id accountDetails?.account_id:", accountDetails?.account_id); */
-    InsertSales(payload);
   };
 
   const [order, setOrder] = useState("desc");
@@ -236,6 +244,7 @@ function Sales() {
         open={dialogOpen}
         mode={dialogMode}
         accountId={accountDetails?.account_id}
+        salesId={salesId}
         productsData={products}
         warehousesData={warehouses}
         salesData={salesData}

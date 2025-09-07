@@ -8,6 +8,7 @@ import {
 } from "@mui/material";
 import { MdClose, MdDelete } from "react-icons/md";
 import AttachmentUploader from "./AttachmentsUploader";
+import { formatDateDMY } from "./DateFormat";
 
 const DS = [
   { value: "Pending", label: "Pending" },
@@ -30,7 +31,7 @@ const fieldSx = {
 function bufferToBase64(buffer) {
   let binary = "";
   const bytes = new Uint8Array(buffer);
-  const chunkSize = 0x8000;  
+  const chunkSize = 0x8000;
   for (let i = 0; i < bytes.length; i += chunkSize) {
     binary += String.fromCharCode.apply(
       null,
@@ -38,14 +39,14 @@ function bufferToBase64(buffer) {
     );
   }
   return window.btoa(binary);
-} 
+}
 
-export default function SalesDialog({ open, mode = "create", accountId, productsData = [], warehousesData = [], salesData, onClose, onSubmit, onSwitchToEdit, }) {
+export default function SalesDialog({ open, mode = "Add", accountId, salesId, productsData = [], warehousesData = [], salesData, onClose, onSubmit, onSwitchToEdit, }) {
   const disabled = mode === "view";
 
   const [attachmentIsDisabled, setAttachmentIsDisabled] = useState(true);
   const [attachments, setAttachments] = useState([]);
- 
+
   const [form, setForm] = useState({
     /* accountId: accountId, */
     warehouse_id: "",
@@ -73,8 +74,23 @@ export default function SalesDialog({ open, mode = "create", accountId, products
     };
 
     console.log("Submitting payload:", payload);
-    onSubmit?.(payload);
+    onSubmit?.(payload, mode, salesId);
     onClose();
+
+    setForm({
+      warehouse_id: "",
+      product_id: "",
+      sale_date: "",
+      customer_name: "",
+      product_quantity: "",
+      total_sale: "",
+      sale_payment_status: "Partial",
+      total_delivery_quantity: "",
+      total_delivered: "",
+      delivery_status: "Pending",
+      attachments: [],
+    });
+    setAttachments([]);
   };
 
   const selectedProduct = productsData.find(p => p.product_id === form.product_id);
@@ -98,7 +114,7 @@ export default function SalesDialog({ open, mode = "create", accountId, products
     const base64String = bufferToBase64(att.file.data);
     return {
       ...att,
-      previewUrl: `data:image/*;base64,${base64String}`,  
+      previewUrl: `data:image/*;base64,${base64String}`,
     };
   });
 
@@ -116,15 +132,15 @@ export default function SalesDialog({ open, mode = "create", accountId, products
 
         return {
           ...att,
-          base64: base64String, // 👈 important: keep actual base64 string
-          mimeType,             // 👈 optional: useful for opening later
+          base64: base64String,
+          mimeType,
         };
       });
 
-      setForm({
+      setForm({ 
         warehouse_id: salesData?.sale?.warehouse_id,
         product_id: salesData?.sales_item?.product_id,
-        sale_date: salesData?.sales_item?.sale_date,
+        sale_date: salesData?.sale?.sale_date,
         customer_name: salesData?.sale?.customer_name,
         product_quantity: salesData?.sales_item?.product_quantity,
         total_sale: salesData?.sale?.total_sale,
@@ -133,9 +149,24 @@ export default function SalesDialog({ open, mode = "create", accountId, products
         total_delivered: salesData?.deliveries?.total_delivered,
         delivery_status: salesData?.sale?.delivery_status,
         attachments: normalizedAttachments,
-      });
+      }); 
 
       setAttachments(normalizedAttachments);
+    } else {
+      setForm({
+        warehouse_id: "",
+        product_id: "",
+        sale_date: "",
+        customer_name: "",
+        product_quantity: "",
+        total_sale: "",
+        sale_payment_status: "Partial",
+        total_delivery_quantity: "",
+        total_delivered: "",
+        delivery_status: "Pending",
+        attachments: [],
+      });
+      setAttachments([]);
     }
   }, [mode, salesData]);
 
@@ -155,7 +186,7 @@ export default function SalesDialog({ open, mode = "create", accountId, products
       }}
     >
       <DialogTitle sx={{ fontWeight: 700 }}>
-        {mode === "create"
+        {mode === "Add"
           ? "Add Sale"
           : mode === "edit"
             ? "Edit Sale"
@@ -184,7 +215,7 @@ export default function SalesDialog({ open, mode = "create", accountId, products
             </Box>
             <Divider sx={{ mb: 2 }} />
           </Box>
- 
+
           <TextField
             select
             label="Warehouse"
@@ -235,12 +266,13 @@ export default function SalesDialog({ open, mode = "create", accountId, products
             type="date"
             size="small"
             fullWidth
-            value={form.sale_date}
+            value={form.sale_date ? form.sale_date.split("T")[0] : ""}  
             onChange={handleChange("sale_date")}
             disabled={disabled}
             sx={fieldSx}
             InputLabelProps={{ shrink: true }}
           />
+
 
           <Box sx={{ gridColumn: "1 / -1" }}>
             <Box sx={{ display: "flex", alignItems: "center", mt: 2, mb: 1 }}>
@@ -286,6 +318,7 @@ export default function SalesDialog({ open, mode = "create", accountId, products
             disabled={true}
             sx={fieldSx}
           />
+
 
           <TextField
             select
@@ -377,26 +410,25 @@ export default function SalesDialog({ open, mode = "create", accountId, products
               Attachment Details (Optional)
             </Typography>
             <Divider sx={{ mb: 2 }} />
-          </Box> 
+          </Box>
 
           <AttachmentUploader
-            isDisabled={mode === "View" || mode === "View"  ? true : attachmentIsDisabled}
+            isDisabled={mode === "View" || mode === "View" ? true : attachmentIsDisabled}
             attachments={attachments}
             onChange={setAttachments}
-          />  
+          />
         </Box>
       </DialogContent>
- 
+
       <DialogActions sx={{ px: 3, py: 2 }}>
-        {mode === "view" ? (
-          <Button onClick={onSwitchToEdit} variant="contained">
-            Edit
-          </Button>
+        {mode === "View" ? (
+          <>
+          </>
         ) : (
           <>
             <Button onClick={onClose}>Cancel</Button>
             <Button variant="contained" onClick={handleSubmit}>
-              {mode === "create" ? "Add" : "Save"}
+              {mode === "Add" ? "Add" : "Save"}
             </Button>
           </>
         )}
