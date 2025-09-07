@@ -22,3 +22,6 @@ export const PortPurchases = `${import.meta.env.VITE_API_PURCHASES}`;
 
 // Sales
 export const PortSales = `${import.meta.env.VITE_API_SALES}`; 
+
+// DOCUMENTS
+export const PortDocuments = `${import.meta.env.VITE_API_DOCUMENTS}`;

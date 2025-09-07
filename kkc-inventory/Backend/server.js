@@ -5,13 +5,13 @@ const cors = require("cors");
 const session = require("express-session");
 const bcrypt = require("bcrypt");
 
-const multer = require("multer");  
+const multer = require("multer");
 const path = require("path");
-const storage = multer.memoryStorage();  
+const storage = multer.memoryStorage();
 const upload = multer({ storage: storage });
 
 const app = express();
- 
+
 app.use(
     cors({
         origin: process.env.DB_FRONTEND_HOST, //"http://localhost:5173", // frontend URL
@@ -855,7 +855,7 @@ app.post("/sales", upload.array("attachments"), (req, res) => {
                                     );
                                 });
                             });
- 
+
                             Promise.all(promises)
                                 .then(() => {
                                     res.json({
@@ -892,7 +892,7 @@ app.get("/sales/:salesId", (req, res) => {
 
     executeQueryWithCallback(query, [salesId], (err, results) => {
         if (err) return res.status(500).json({ error: "Failed to fetch sale" });
- 
+
         const sale = {
             sales_id: null,
             account_id: null,
@@ -957,24 +957,24 @@ app.get("/sales/:salesId", (req, res) => {
         res.json({ sale });
     });
 });
- 
+
 /* app.get("/sales", (req, res) => {
     db.query("SELECT * FROM sales", (err, results) => {
         if (err) return res.status(500).json({ error: err });
         res.json(results);
     });
 }); */
- 
+
 app.get("/sales", (req, res) => {
     db.query("SELECT * FROM sales", (err, sales) => {
         if (err) return res.status(500).json({ error: err });
- 
+
         db.query("SELECT * FROM sales_item", (err, items) => {
             if (err) return res.status(500).json({ error: err });
- 
+
             db.query("SELECT * FROM sales_deliveries", (err, deliveries) => {
                 if (err) return res.status(500).json({ error: err });
- 
+
                 db.query("SELECT * FROM sales_attachments", (err, attachments) => {
                     if (err) return res.status(500).json({ error: err });
 
@@ -989,6 +989,166 @@ app.get("/sales", (req, res) => {
         });
     });
 });
+
+
+// DOCUMENTS
+const MAX_FILE_BYTES = 500 * 1024; // 500KB
+const ALLOWED_MIME = new Set([
+  "application/pdf",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document", // docx
+  "application/vnd.ms-excel",                                                // xls (older)
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",       // xlsx
+]);
+const ALLOWED_EXT = new Set([".pdf", ".docx", ".xls", ".xlsx"]);
+
+const mimeToExt = (mime) => {
+  const map = {
+    "application/pdf": "pdf",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
+    "application/vnd.ms-excel": "xls",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
+  };
+  return map[mime] || "";
+};
+
+const ensureExtension = (name, mime) => {
+  const ext = path.extname(name || "");
+  if (ext) return name;
+  const guess = mimeToExt(mime);
+  return guess ? `${name}.${guess}` : name;
+};
+
+const isAllowed = (file) => {
+  const mimeOk = ALLOWED_MIME.has(file.mimetype);
+  const ext = path.extname(file.originalname || "").toLowerCase();
+  const extOk = ALLOWED_EXT.has(ext);
+  return mimeOk && extOk;
+};
+
+// GET /documents?search=...
+app.get("/documents", (req, res) => {
+  const search = (req.query.search || "").trim();
+  const like = `%${search}%`;
+  const sql = `
+    SELECT document_id, document_name, file_name, file_type,
+           OCTET_LENGTH(file_data) AS file_size, uploaded_at
+    FROM documents
+    ${search ? "WHERE document_name LIKE ? OR file_name LIKE ? OR file_type LIKE ?" : ""}
+    ORDER BY uploaded_at DESC, document_id DESC
+  `;
+  const params = search ? [like, like, like] : [];
+  db.query(sql, params, (err, rows) => {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json(rows);
+  });
+});
+
+// POST /documents (PDF/DOCX/XLS/XLSX only; 500KB limit)
+app.post("/documents", upload.single("file"), (req, res) => {
+  try {
+    const file = req.file;
+    if (!file) return res.status(400).json({ error: "No file uploaded." });
+
+    if (!isAllowed(file)) {
+      return res.status(415).json({ error: "Only PDF, DOCX, XLS, and XLSX are allowed." });
+    }
+    if (file.size > MAX_FILE_BYTES) {
+      return res.status(413).json({ error: "File too large. Max is 500KB." });
+    }
+
+    const file_type = file.mimetype || "application/octet-stream";
+    const original = file.originalname || "file";
+    const normalized = ensureExtension(original, file_type);
+
+    const document_name = (req.body.document_name || normalized).trim();
+    const file_name = normalized;
+    const file_data = file.buffer;
+
+    const sql = `INSERT INTO documents (document_name, file_name, file_data, file_type) VALUES (?,?,?,?)`;
+    db.query(sql, [document_name, file_name, file_data, file_type], (err, result) => {
+      if (err) return res.status(500).json({ error: err.message });
+      res.json({ message: "Document uploaded", document_id: result.insertId, document_name, file_name, file_type });
+    });
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
+  }
+});
+
+// PUT /documents/:id
+app.put("/documents/:id", (req, res) => {
+  const { id } = req.params;
+  const { document_name } = req.body;
+  if (!document_name || !document_name.trim())
+    return res.status(400).json({ error: "document_name is required" });
+
+  db.query("UPDATE documents SET document_name=? WHERE document_id=?", [document_name.trim(), id], (err) => {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json({ message: "Document updated" });
+  });
+});
+
+// GET /documents/:id/view (inline)
+app.get("/documents/:id/view", (req, res) => {
+  const { id } = req.params;
+  db.query("SELECT document_name, file_name, file_data, file_type FROM documents WHERE document_id=? LIMIT 1", [id], (err, rows) => {
+    if (err) return res.status(500).json({ error: err.message });
+    if (!rows || rows.length === 0) return res.status(404).json({ error: "Not found" });
+
+    const { document_name, file_name, file_data, file_type } = rows[0];
+    const ext = path.extname(file_name || "");
+    const base = (document_name || file_name || "document").replace(/[\\/:*?"<>|]/g, "_").trim() || "document";
+    const finalName = base.toLowerCase().endsWith(ext.toLowerCase()) ? base : base + ext;
+
+    res.setHeader("Content-Type", file_type || "application/octet-stream");
+    res.setHeader("Content-Disposition", `inline; filename="${finalName}"`);
+    res.setHeader("Accept-Ranges", "bytes");
+    res.status(200).send(file_data);
+  });
+});
+
+// GET /documents/:id/inline (base64)
+app.get("/documents/:id/inline", (req, res) => {
+  const { id } = req.params;
+  db.query("SELECT document_name, file_name, file_data, file_type FROM documents WHERE document_id=? LIMIT 1", [id], (err, rows) => {
+    if (err) return res.status(500).json({ error: err.message });
+    if (!rows || rows.length === 0) return res.status(404).json({ error: "Not found" });
+
+    const { document_name, file_name, file_data, file_type } = rows[0];
+    const base64 = Buffer.from(file_data).toString("base64");
+    res.json({ document_name, file_name, file_type, base64 });
+  });
+});
+
+// GET /documents/:id/download (attachment)
+app.get("/documents/:id/download", (req, res) => {
+  const { id } = req.params;
+  db.query("SELECT document_name, file_name, file_data, file_type FROM documents WHERE document_id=? LIMIT 1", [id], (err, rows) => {
+    if (err) return res.status(500).json({ error: err.message });
+    if (!rows || rows.length === 0) return res.status(404).json({ error: "Not found" });
+
+    const { document_name, file_name, file_data, file_type } = rows[0];
+    const ext = path.extname(file_name || "");
+    const base = (document_name || file_name || "download").replace(/[\\/:*?"<>|]/g, "_").trim() || "download";
+    const finalName = base.toLowerCase().endsWith(ext.toLowerCase()) ? base : base + ext;
+
+    res.setHeader("Content-Type", file_type || "application/octet-stream");
+    res.setHeader("Content-Disposition", `attachment; filename="${finalName}"`);
+    res.status(200).send(file_data);
+  });
+});
+
+// DELETE /documents/:id
+app.delete("/documents/:id", (req, res) => {
+  const { id } = req.params;
+  db.query("DELETE FROM documents WHERE document_id=?", [id], (err) => {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json({ message: "Document deleted" });
+  });
+});
+
+
+
+
 
 
 app.listen(process.env.PORT, () => console.log(`Server running on port ${process.env.PORT}`));

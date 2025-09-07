@@ -1,4 +1,3 @@
-// src/assets/components/SearchBar.jsx
 import { TextField, InputAdornment } from "@mui/material";
 import { MdSearch } from "react-icons/md";
 

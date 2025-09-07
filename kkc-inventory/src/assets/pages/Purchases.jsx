@@ -242,7 +242,7 @@ function Purchases() {
                           </TableCell>
                           <TableCell sx={wrapCellSx}>{row.purchase_payment_status}</TableCell>
                           <TableCell>
-                            <Stack direction="row" justifyContent="center" spacing={0.5}>
+                            <Stack direction="row" justifyContent="center" spacing={-0.4}>
                               <Tooltip title="View">
                                 <IconButton size="small" color="success" onClick={() => openView(row)}>
                                   <MdVisibility style={{ fontSize: 22 }} />
