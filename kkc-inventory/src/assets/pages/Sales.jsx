@@ -2,64 +2,16 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Box, Paper, Typography, TextField, Button, InputAdornment, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, IconButton, CircularProgress, Tooltip, Chip, Stack } from "@mui/material";
 import { MdSearch, MdAdd, MdVisibility, MdEdit, MdDelete } from "react-icons/md";
 import Swal from "sweetalert2";
-import SortableHeader, { getComparator, stableSort } from "../components/SortableHeader";
-import PurchaseDialog from "../components/PurchaseDialog";
+import SortableHeader, { getComparator, stableSort } from "../components/SortableHeader"; 
 import SalesDialog from "../components/SalesDialog";
 import { RetrieveWarehouse } from "../logics/admin/ManageWarehouse";
 import ProductsCRUD from "../logics/products/ProductsCRUD";
 import { InsertSales, RetrieveSales } from "../logics/admin/ManageSales";
-
-/* Typescripts ----------------------->>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>*/
-// Header style
-const headerCellSx = {
-  py: 3.0, px: 0.75, fontSize: "0.90rem", fontWeight: 700, // bigger than rows
-  bgcolor: "#706f6fff", textAlign: "center", color: "white",
-};
-
-// Body style
-const bodyCellSx = {
-  textAlign: "center",
-  fontSize: "0.90rem",
-  py: 2,
-  px: 1,
-  overflow: "hidden",
-  textOverflow: "ellipsis",
-};
-
-// Wrapping Cell Style (so that it has not ellipses)
-const wrapCellSx = {
-  whiteSpace: "normal",
-  wordBreak: "break-word",
-  textOverflow: "clip",
-  overflow: "visible",
-  maxWidth: "none",
-  px: 1.25,
-};
-/* Typescripts ----------------------->>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>*/
-
-
-function dateFormat(v) {
-  if (!v) return "";
-  if (typeof v === "string") {
-    const m = v.match(/^(\d{4}-\d{2}-\d{2})/);
-    if (m) {
-      const [y, mo, d] = m[1].split("-").map(Number);
-      const dt = new Date(y, mo - 1, d);
-      return dt.toLocaleDateString("en-US", {
-        month: "long",
-        day: "numeric",
-        year: "numeric",
-      });
-    }
-  }
-  const dt = new Date(v);
-  if (Number.isNaN(dt.getTime())) return String(v);
-  return dt.toLocaleDateString("en-US", {
-    month: "long",
-    day: "numeric",
-    year: "numeric",
-  });
-}
+import SearchBar from "../components/SearchBar";
+import { bodyCellSx, headerCellSx } from "../components/TableLayout";
+import { dateFormat } from "../components/DateFormat";
+import TablePager from "../components/TablePager";
+import { FetchCurrentUser } from "../logics/auth/FetchCurentUser";
 
 function Sales() {
   // Modal Variables States
@@ -72,30 +24,20 @@ function Sales() {
   const [salesAttachments, setSalesAttachments] = useState([]);
   const [warehouses, setWarehouses] = useState([]);
   const [products, setProducts] = useState([]);
-  const [accountId, setAccountId] = useState(null);
+  const [salesData, setSalesData] = useState({});
+  const accountDetails = FetchCurrentUser();
 
   // Filter Variables
   const [search, setSearch] = useState("");
 
-  useEffect(() => {
-    const localStorageUserData = localStorage.getItem("user");
-
-    if (localStorageUserData) {
-      try {
-        const userObj = JSON.parse(localStorageUserData);
-        setAccountId(userObj.account_id);
-        console.log("Account ID:", userObj.account_id);
-      } catch (err) {
-        console.error("Error parsing user from localStorage:", err);
-      }
-    } else {
-      console.log("No user found in localStorage");
-    }
-  }, []);
-
-  const DialogHandler = (selectedDialogMode) => {
+  const DialogHandler = (selectedDialogMode, data) => {
     setDialogMode(selectedDialogMode);
     setDialogOpen(true);
+
+    if (selectedDialogMode == "View" || selectedDialogMode == "Edit") {
+      console.log("Selected Data: ", data)
+      setSalesData(data);
+    }
   };
 
   // Data Fetcher 
@@ -105,10 +47,9 @@ function Sales() {
         // Sales
         const { data: salesData } = await RetrieveSales();
         setSales(salesData.sales);
-        setSalesDeliveries(salesData.deliveries); 
-        setSalesItems(salesData.items); 
-        setSalesAttachments(salesData.attachments); 
-        console.log("salesData:", salesData);
+        setSalesDeliveries(salesData.deliveries);
+        setSalesItems(salesData.items);
+        setSalesAttachments(salesData.attachments);
 
         // Warehouses
         const { data: warehouseData } = await RetrieveWarehouse();
@@ -132,31 +73,38 @@ function Sales() {
   const handleSalesSubmit = (formData) => {
     const payload = {
       ...formData,
-      account_id: accountId,
+      account_id: accountDetails?.account_id,
     };
 
     /* console.log("Sales Payload:", payload);
-    console.log("accountId accountId:", accountId); */
+    console.log("accountDetails?.account_id accountDetails?.account_id:", accountDetails?.account_id); */
     InsertSales(payload);
   };
- 
-  
-  // Memoized Filtered sales (no sorting)
-  const filteredSales = useMemo(() => {
-    return sales.filter((s) => {
+
+  const [order, setOrder] = useState("desc");
+  const [orderBy, setOrderBy] = useState("purchase_date");
+  const handleSort = (property) => {
+    const isAsc = orderBy === property && order === "asc";
+    setOrder(isAsc ? "desc" : "asc");
+    setOrderBy(property);
+  };
+
+  const sortedRows = useMemo(() => {
+    const filtered = sales.filter((s) => {
       const p = products.find((p) => p.product_id === s.product_id);
 
       return (
         s.sale_payment_status.toLowerCase().includes(search.toLowerCase()) ||
         s.delivery_status.toLowerCase().includes(search.toLowerCase()) ||
+        s.customer_name.toLowerCase().includes(search.toLowerCase()) ||
         (p &&
           (p.product_name.toLowerCase().includes(search.toLowerCase()) ||
-          p.supplier_id.toLowerCase().includes(search.toLowerCase())))
+            p.supplier_id.toLowerCase().includes(search.toLowerCase())))
       );
     });
-  }, [sales, products, search]);
 
-
+    return stableSort(filtered, getComparator(order, orderBy));
+  }, [sales, products, search, order, orderBy]);
 
 
   return (
@@ -166,11 +114,21 @@ function Sales() {
       </Typography>
 
       <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2, px: 1 }} spacing={2}>
+
+        <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2, px: 1 }} spacing={2}>
+          <Stack direction="row" spacing={2}>
+            <SearchBar
+              search={search}
+              onSearchChange={setSearch}
+            />
+          </Stack>
+        </Stack>
+
         <Button
           variant="contained"
           startIcon={<MdAdd />}
           sx={{ bgcolor: "#E67600", "&:hover": { bgcolor: "#f99f3fff" }, textTransform: "none", fontWeight: 600, borderRadius: 2 }}
-          onClick={() => { DialogHandler() }}
+          onClick={() => { DialogHandler("Add") }}
         >
           Add Sales
         </Button>
@@ -179,86 +137,108 @@ function Sales() {
       <Paper elevation={1} sx={{ borderRadius: 2, bgcolor: "transparent", boxShadow: "none" }}>
         <TableContainer
           component={Paper}
-          sx={{
-            borderRadius: 2,
-            border: "1px solid #ddd",
-            boxShadow: "0px 2px 8px rgba(0,0,0,0.1)",
-            bgcolor: "background.paper",
-          }}
+          sx={{ borderRadius: 2, border: "1px solid #ddd", boxShadow: "0px 2px 8px rgba(0,0,0,0.1)", bgcolor: "background.paper" }}
         >
+          <TablePager
+            data={sortedRows}
+            resetOn={`${order}-${orderBy}-${search}`}
+            initialRowsPerPage={10}
+            align="left"
+          >
+            {({ pagedRows, Pagination, page, rowsPerPage }) => (
+              <>
+                <Table size="small" sx={{ tableLayout: "fixed" }}>
+                  <TableHead sx={{ "& .MuiTableCell-root": headerCellSx }}>
+                    <TableRow>
+                      <SortableHeader id="number" label="No." order={order} orderBy={orderBy} onSort={handleSort} sx={{ width: "5%" }} />
+                      <SortableHeader id="sale_date" label="Date" order={order} orderBy={orderBy} onSort={handleSort} sx={{ width: "10%" }} />
+                      <SortableHeader id="customer_name" label="Customer/Company Name" order={order} orderBy={orderBy} onSort={handleSort} sx={{ width: "20%" }} />
+                      <SortableHeader id="product" label="Product" order={order} orderBy={orderBy} onSort={handleSort} sx={{ width: "15%" }} />
+                      <SortableHeader id="quantity" label="Quantity Sold" order={order} orderBy={orderBy} onSort={handleSort} sx={{ width: "10%" }} />
+                      <SortableHeader id="selling_price" label="Selling Price" order={order} orderBy={orderBy} onSort={handleSort} sx={{ width: "10%" }} />
+                      <SortableHeader id="total_sale" label="Total" order={order} orderBy={orderBy} onSort={handleSort} sx={{ width: "10%" }} />
+                      <SortableHeader id="sale_payment_status" label="Payment Status" order={order} orderBy={orderBy} onSort={handleSort} sx={{ width: "10%" }} />
+                      <SortableHeader id="delivery_status" label="Delivery Status" order={order} orderBy={orderBy} onSort={handleSort} sx={{ width: "10%" }} />
+                      <TableCell sx={{ width: "10%" }}>Actions</TableCell>
+                    </TableRow>
+                  </TableHead>
 
-          <Table size="small" sx={{ tableLayout: "auto", width: "100%" }}>
-            <TableHead sx={{ "& .MuiTableCell-root": headerCellSx }}>
-              <TableRow> 
-                <TableCell sx={headerCellSx}>No.</TableCell>
-                <TableCell sx={headerCellSx}>Date</TableCell>
-                <TableCell sx={headerCellSx}>Customer/Company Name</TableCell>
-                <TableCell sx={headerCellSx}>Product</TableCell>
-                <TableCell sx={headerCellSx}>Quantity Sold</TableCell>
-                <TableCell sx={headerCellSx}>Delivered</TableCell>
-                <TableCell sx={headerCellSx}>Selling Price</TableCell>
-                <TableCell sx={headerCellSx}>Total</TableCell>
-                <TableCell sx={headerCellSx}>Payment Status</TableCell>
-                <TableCell sx={headerCellSx}>Delivery Status</TableCell> 
-                <TableCell sx={headerCellSx}>Actions</TableCell>
-              </TableRow>
-            </TableHead>
+                  <TableBody sx={{ "& .MuiTableCell-root": bodyCellSx }}>
+                    {pagedRows.map((row, index) => {
+                      const sales_item = salesItems.find((item) => item.sales_id === row.sales_id);
+                      const p = sales_item ? products.find((prod) => prod.product_id === sales_item.product_id) : null;
+                      const sales_deliveries = sales_item ? salesDeliveries.find((d) => d.sales_item_id === sales_item.sales_item_id) : null;
+                      
+                      const sales_attachments = sales_item
+                        ? salesAttachments.filter((d) => d.sales_delivery_id === sales_deliveries?.sales_delivery_id)
+                        : [];
 
-            <TableBody sx={{ "& .MuiTableCell-root": bodyCellSx }}>
-              {filteredSales.map((row, index) => {
-                const p = products.find((prod) => prod.product_id === row.product_id);
-                const sales_item = salesItems.find((salesItems) => salesItems.sales_id === row.sales_id);
-                console.log("ASFSFAS", sales_item)
+                      const globalIndex = page * rowsPerPage + index + 1;
 
-                return (
-                  <TableRow key={row.sale_id ?? index}>
-                    <TableCell>{index + 1}</TableCell>
-                    <TableCell>{dateFormat(row.sale_date)}</TableCell>
-                    <TableCell>{row.customer_name}</TableCell>
-                    <TableCell>{sales_item ? sales_item.product_name : sales_item.product_id}</TableCell>
-                    <TableCell>{p ? p.supplier_id : "Null"}</TableCell>
-                    <TableCell>{"Null"}</TableCell>
-                    <TableCell>{"Null"}</TableCell>
-                    <TableCell>{"Null"}</TableCell>
-                    <TableCell>{row.sale_payment_status}</TableCell>
-                    <TableCell>{row.delivery_status}</TableCell>
+                      const rowData = {
+                        sale: row,
+                        sales_item,
+                        product: p,
+                        deliveries: sales_deliveries,
+                        attachments: sales_attachments,
+                      };
 
-                    <TableCell>
-                      <Stack direction="row" justifyContent="center" spacing={0.5}>
-                        <Tooltip title="View">
-                          <IconButton size="small" color="success" onClick={() => openView(row)}>
-                            <MdVisibility style={{ fontSize: 22 }} />
-                          </IconButton>
-                        </Tooltip>
-                        <Tooltip title="Edit">
-                          <IconButton size="small" color="primary" onClick={() => openEdit(row)}>
-                            <MdEdit style={{ fontSize: 22 }} />
-                          </IconButton>
-                        </Tooltip>
-                        <Tooltip title="Delete">
-                          <IconButton size="small" color="error" onClick={() => handleDelete(row)}>
-                            <MdDelete style={{ fontSize: 22 }} />
-                          </IconButton>
-                        </Tooltip>
-                      </Stack>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
+                      return (
+                        <TableRow key={row.sale_id ?? globalIndex}>
+                          <TableCell>{globalIndex}</TableCell>
+                          <TableCell>{dateFormat(row.sale_date)}</TableCell>
+                          <TableCell>{row.customer_name}</TableCell>
+                          <TableCell>{p ? p.product_name : "Null"}</TableCell>
+                          <TableCell>{sales_item ? sales_item.product_quantity : "Null"}</TableCell>
+                          <TableCell>{p ? p.selling_price : "Null"}</TableCell>
+                          <TableCell>{row.total_sale ?? "Null"}</TableCell>
+                          <TableCell>
+                            <Chip size="small" color={row.sale_payment_status === "Fully Paid'" ? "success" : "warning"} label={row.sale_payment_status} sx={{ px: 0.9, maxWidth: "none" }} />
+                          </TableCell>
+                          <TableCell>
+                            <Chip size="small" color={row.delivery_status === "Delivered" ? "success" : "warning"} label={row.delivery_status} sx={{ px: 0.9, maxWidth: "none" }} />
+                          </TableCell>
+                          <TableCell>
+                            <Stack direction="row" justifyContent="center" spacing={0.5}>
+                              <Tooltip title="View">
+                                <IconButton size="small" color="success" onClick={() => DialogHandler("View", rowData)}>
+                                  <MdVisibility style={{ fontSize: 22 }} />
+                                </IconButton>
+                              </Tooltip>
+                              <Tooltip title="Edit">
+                                <IconButton size="small" color="primary" onClick={() => DialogHandler("Edit", rowData)}>
+                                  <MdEdit style={{ fontSize: 22 }} />
+                                </IconButton>
+                              </Tooltip>
+                              <Tooltip title="Delete">
+                                <IconButton size="small" color="error" onClick={() => DialogHandler("Delete", rowData)}>
+                                  <MdDelete style={{ fontSize: 22 }} />
+                                </IconButton>
+                              </Tooltip>
+                            </Stack>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
 
-
-          </Table>
-
+                <Box display="flex" justifyContent="flex-end" p={2}>
+                  <Pagination size="small" />
+                </Box>
+              </>
+            )}
+          </TablePager>
         </TableContainer>
       </Paper>
 
       <SalesDialog
         open={dialogOpen}
-        mode={null}
-        accountId={accountId}
+        mode={dialogMode}
+        accountId={accountDetails?.account_id}
         productsData={products}
         warehousesData={warehouses}
+        salesData={salesData}
         initialData={null}
         onClose={() => setDialogOpen(false)}
         onSwitchToEdit={null}

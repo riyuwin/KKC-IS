@@ -907,8 +907,7 @@ app.get("/sales/:salesId", (req, res) => {
 
         const itemMap = {};
 
-        results.forEach(row => {
-            // Set sale info (same for every row)
+        results.forEach(row => { 
             if (!sale.sales_id) {
                 sale.sales_id = row.sales_id;
                 sale.account_id = row.account_id;
@@ -956,15 +955,8 @@ app.get("/sales/:salesId", (req, res) => {
 
         res.json({ sale });
     });
-});
-
-/* app.get("/sales", (req, res) => {
-    db.query("SELECT * FROM sales", (err, results) => {
-        if (err) return res.status(500).json({ error: err });
-        res.json(results);
-    });
-}); */
-
+}); 
+ 
 app.get("/sales", (req, res) => {
     db.query("SELECT * FROM sales", (err, sales) => {
         if (err) return res.status(500).json({ error: err });

@@ -1,35 +1,45 @@
-import React, { useState } from "react";
+import React from "react";
 import { IconButton, Button, Box, Typography, Stack } from "@mui/material";
-import { MdClose, MdDelete } from "react-icons/md";
+import { MdDelete } from "react-icons/md";
 
-export default function AttachmentUploader({ isDisabled, attachments, onChange }) {
+export default function AttachmentUploader({ isDisabled, attachments = [], onChange }) {
     const handleFileChange = (e) => {
         const files = Array.from(e.target.files);
 
-        const filteredFiles = files.filter(file => {
-            if (file.size > 500 * 1024) {
-            alert(`${file.name} is too large. Max size is 1MB.`);
-            console.log(`${file.name} is too large. Max size is 1MB.`)
-            return false;
+        const filteredFiles = files.filter((file) => {
+            if (file.size > 1024 * 1024) { // 1MB limit
+                alert(`${file.name} is too large. Max size is 1MB.`);
+                return false;
             }
             return true;
         });
 
         onChange([...attachments, ...filteredFiles]);
-        };
-
-
+    };
 
     const handleRemoveFile = (index) => {
         const updated = attachments.filter((_, i) => i !== index);
         onChange(updated);
-    };
+    }; 
 
-    const handleOpenFile = (file) => {
-        const fileURL = URL.createObjectURL(file);
-        window.open(fileURL, "_blank");
-    };
+    const handleOpenFile = (file) => { 
+        if (file instanceof File) {
+            const fileURL = URL.createObjectURL(file);
+            window.open(fileURL, "_blank");  
+        } 
+        else if (file.previewUrl) {
+            window.open(file.previewUrl, "_blank");  
+        } 
+        else if (file.file_url) {
+            window.open(file.file_url, "_blank");
+        }
+    }; 
 
+    const getFileName = (file) => {
+        if (file instanceof File) return file.name;  
+        return file.file_name || "Attachment";    
+    };
+ 
     return (
         <Box sx={{ gridColumn: "1 / -1", mb: 2 }}>
             <Box
@@ -44,7 +54,7 @@ export default function AttachmentUploader({ isDisabled, attachments, onChange }
                     <Stack spacing={1} sx={{ flexGrow: 1, mr: 2 }}>
                         {attachments.map((file, index) => (
                             <Stack
-                                key={index}
+                                key={file.attachment_id || index}
                                 direction="row"
                                 alignItems="center"
                                 justifyContent="space-between"
@@ -55,29 +65,28 @@ export default function AttachmentUploader({ isDisabled, attachments, onChange }
                                     sx={{ cursor: "pointer", textDecoration: "underline" }}
                                     onClick={() => handleOpenFile(file)}
                                 >
-                                    {file.name}
+                                    {getFileName(file)}
                                 </Typography>
-                                <IconButton
-                                    size="small"
-                                    color="error"
-                                    onClick={() => handleRemoveFile(index)}
-                                >
-                                    <MdDelete />
-                                </IconButton>
+                                {!isDisabled && (
+                                    <IconButton
+                                        size="small"
+                                        color="error"
+                                        onClick={() => handleRemoveFile(index)}
+                                    >
+                                        <MdDelete />
+                                    </IconButton>
+                                )}
                             </Stack>
                         ))}
                     </Stack>
                 )}
 
-                <Button variant="outlined" component="label" disabled={isDisabled}>
-                    Select Files
-                    <input
-                        hidden
-                        type="file"
-                        multiple
-                        onChange={handleFileChange}
-                    />
-                </Button>
+                {!isDisabled && (
+                    <Button variant="outlined" component="label">
+                        Select Files
+                        <input hidden type="file" multiple onChange={handleFileChange} />
+                    </Button>
+                )}
             </Box>
         </Box>
     );
