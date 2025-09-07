@@ -94,13 +94,30 @@ export default function SalesDialog({ open, mode = "create", accountId, products
     console.log("All required filled?", allRequiredFilled);
   }, [form]);
 
+  const normalizedAttachments = (salesData?.attachments || []).map((att) => {
+    const base64String = bufferToBase64(att.file.data);
+    return {
+      ...att,
+      previewUrl: `data:image/*;base64,${base64String}`,  
+    };
+  });
+
+
   useEffect(() => {
     if (mode === "Edit" || mode === "View") {
       const normalizedAttachments = (salesData?.attachments || []).map((att) => {
         const base64String = bufferToBase64(att.file.data);
+        const ext = (att.file_name || "").split(".").pop().toLowerCase();
+
+        let mimeType = "application/octet-stream";
+        if (ext === "png") mimeType = "image/png";
+        else if (ext === "jpg" || ext === "jpeg") mimeType = "image/jpeg";
+        else if (ext === "pdf") mimeType = "application/pdf";
+
         return {
           ...att,
-          previewUrl: `data:image/*;base64,${base64String}`,  
+          base64: base64String, // 👈 important: keep actual base64 string
+          mimeType,             // 👈 optional: useful for opening later
         };
       });
 
