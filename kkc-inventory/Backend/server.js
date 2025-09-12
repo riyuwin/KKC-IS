@@ -791,14 +791,16 @@ app.post("/sales", upload.array("attachments"), (req, res) => {
         return res.status(400).json({ error: "Missing required information." });
     }
 
+    const productQuantity = Number(product_quantity);
+
     const insertSalesQuery = `
     INSERT INTO sales (account_id, warehouse_id, sale_date, customer_name, total_sale, delivery_status, sale_payment_status, created_at, updated_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
   `;
 
     const insertSalesItemQuery = `
-    INSERT INTO sales_item (sales_id, product_id, created_at, updated_at)
-    VALUES (?, ?, NOW(), NOW())
+    INSERT INTO sales_item (sales_id, product_id, product_quantity, created_at, updated_at)
+    VALUES (?, ?, ?, NOW(), NOW())
   `;
 
     const insertSalesDeliveriesQuery = `
@@ -823,7 +825,7 @@ app.post("/sales", upload.array("attachments"), (req, res) => {
 
             executeQueryWithCallback(
                 insertSalesItemQuery,
-                [salesId, product_id],
+                [salesId, product_id, productQuantity],
                 (err2, result2) => {
                     if (err2) {
                         return res.status(500).json({ error: "Failed to insert sales item" });
@@ -888,10 +890,15 @@ app.put("/sales/:id", upload.array("attachments"), (req, res) => {
     total_delivery_quantity,
     total_delivered,
     delivery_status,
-    attachments: retainedAttachmentsIds, // Array of attachment IDs to retain
+    attachments_id, // IDs to retain
   } = req.body;
 
   const attachments = req.files || [];
+
+    const productQuantity = Number(product_quantity);
+
+  console.log("product_quantity: ", product_quantity);
+  console.log("Attachment Ids to retain: ", attachments_id);
 
   if (
     !account_id ||
@@ -918,7 +925,7 @@ app.put("/sales/:id", upload.array("attachments"), (req, res) => {
 
   const updateSalesItemQuery = `
     UPDATE sales_item 
-    SET product_id = ?, updated_at = NOW()
+    SET product_id = ?, product_quantity = ?, updated_at = NOW()
     WHERE sales_id = ?
   `;
 
@@ -966,7 +973,7 @@ app.put("/sales/:id", upload.array("attachments"), (req, res) => {
         const salesItemId = rows[0].sales_item_id;
 
         // STEP 3: Update sales_item
-        executeQueryWithCallback(updateSalesItemQuery, [product_id, salesId], (err3) => {
+        executeQueryWithCallback(updateSalesItemQuery, [product_id, productQuantity, salesId], (err3) => {
           if (err3) return res.status(500).json({ error: "Failed to update sales item" });
 
           // STEP 4: Update sales_deliveries
@@ -988,46 +995,50 @@ app.put("/sales/:id", upload.array("attachments"), (req, res) => {
 
                 // STEP 6: Handle attachments
                 executeQueryWithCallback(getExistingAttachmentsQuery, [salesDeliveryId], (err6, existingRows) => {
-                  if (err6) return res.status(500).json({ error: "Failed to fetch existing attachments" });
+                    if (err6) return res.status(500).json({ error: "Failed to fetch existing attachments" });
+ 
+                    const existingIds = existingRows.map(r => Number(r.attachment_id));
+ 
+                    let retainedIds = [];
+                    if (Array.isArray(attachments_id)) {
+                        retainedIds = attachments_id.map(id => Number(id));
+                    } else if (typeof attachments_id === "string") { 
+                        retainedIds = attachments_id.split(",").map(id => Number(id.trim()));
+                    }
+ 
+                    const toDeleteIds = existingIds.filter(id => !retainedIds.includes(id)); 
+                    if (toDeleteIds.length > 0) {
+                        executeQueryWithCallback(deleteAttachmentsQuery, [toDeleteIds], (err7) => {
+                        if (err7) return res.status(500).json({ error: "Failed to delete removed attachments" });
+                        insertNewFiles();
+                        });
+                    } else {
+                        insertNewFiles();
+                    }
+ 
+                    function insertNewFiles() {
+                        if (!attachments.length) return res.json({ message: "Sales updated successfully" });
 
-                  const existingIds = existingRows.map(r => r.attachment_id);
-                  const retainedIds = Array.isArray(retainedAttachmentsIds)
-                    ? retainedAttachmentsIds.map(id => Number(id))
-                    : [];
+                        const insertPromises = attachments.map(file => {
+                        return new Promise((resolve, reject) => {
+                            executeQueryWithCallback(
+                            insertAttachmentsQuery,
+                            [salesDeliveryId, file.buffer, file.originalname],
+                            (err8) => {
+                                if (err8) reject(err8);
+                                else resolve();
+                            }
+                            );
+                        });
+                        });
 
-                  // Delete only removed attachments
-                  const toDeleteIds = existingIds.filter(id => !retainedIds.includes(id));
-                  if (toDeleteIds.length > 0) {
-                    executeQueryWithCallback(deleteAttachmentsQuery, [toDeleteIds], (err7) => {
-                      if (err7) return res.status(500).json({ error: "Failed to delete removed attachments" });
-                      insertNewFiles();
+                        Promise.all(insertPromises)
+                        .then(() => res.json({ message: "Sales updated successfully with attachments" }))
+                        .catch(() => res.status(500).json({ error: "Failed to insert new attachments" }));
+                    }
                     });
-                  } else {
-                    insertNewFiles();
-                  }
 
-                  // Insert newly uploaded files
-                  function insertNewFiles() {
-                    if (!attachments.length) return res.json({ message: "Sales updated successfully" });
 
-                    const insertPromises = attachments.map(file => {
-                      return new Promise((resolve, reject) => {
-                        executeQueryWithCallback(
-                          insertAttachmentsQuery,
-                          [salesDeliveryId, file.buffer, file.originalname],
-                          (err8) => {
-                            if (err8) reject(err8);
-                            else resolve();
-                          }
-                        );
-                      });
-                    });
-
-                    Promise.all(insertPromises)
-                      .then(() => res.json({ message: "Sales updated successfully with attachments" }))
-                      .catch(() => res.status(500).json({ error: "Failed to insert new attachments" }));
-                  }
-                });
               });
             }
           );

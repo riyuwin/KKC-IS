@@ -66,7 +66,7 @@ export default function SalesDialog({ open, mode = "Add", accountId, salesId, pr
     setForm({ ...form, [field]: e.target.value });
   };
 
-  const handleSubmit = () => {
+  /* const handleSubmit = () => {
     const payload = {
       ...form,
       total_sale: Number(form.total_sale || 0),
@@ -91,7 +91,42 @@ export default function SalesDialog({ open, mode = "Add", accountId, salesId, pr
       attachments: [],
     });
     setAttachments([]);
+  }; */
+
+  const handleSubmit = () => { 
+    const attachmentIds = attachments
+      .filter((att) => att.attachment_id)  
+      .map((att) => att.attachment_id);
+
+    const payload = {
+      ...form,
+      total_sale: Number(form.total_sale || 0),
+      attachments,
+      attachments_id: attachmentIds,  
+    };
+
+    console.log("Submitting payload:", payload);
+    onSubmit?.(payload, mode, salesId);
+    onClose();
+
+    setForm({
+      warehouse_id: "",
+      product_id: "",
+      sale_date: "",
+      customer_name: "",
+      product_quantity: "",
+      total_sale: "",
+      sale_payment_status: "Partial",
+      total_delivery_quantity: "",
+      total_delivered: "",
+      delivery_status: "Pending",
+      attachments: [],
+      attachments_id: [], // reset
+    });
+    setAttachments([]);
   };
+
+
 
   const selectedProduct = productsData.find(p => p.product_id === form.product_id);
 
