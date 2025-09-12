@@ -104,7 +104,7 @@ function Sales() {
       return (
         s.sale_payment_status.toLowerCase().includes(search.toLowerCase()) ||
         s.delivery_status.toLowerCase().includes(search.toLowerCase()) ||
-        s.customer_name.toLowerCase().includes(search.toLowerCase()) ||
+        s.customer_name.toLowerCase().includes(search.toLowerCase()) || 
         (p &&
           (p.product_name.toLowerCase().includes(search.toLowerCase()) ||
             p.supplier_id.toLowerCase().includes(search.toLowerCase())))
