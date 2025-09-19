@@ -18,7 +18,14 @@ import {
 } from "recharts";
 import { Divider } from "@mui/material";
 
-function SalesReportTable(startDate, endDate) {
+function SalesReportTable({ duration, setDataToExport }) {
+
+    /* console.log("Duration123: ", duration);
+
+
+    console.log("End DATE: ", duration?.endDate);
+    console.log("STATRT DATE: ", duration?.startDate); */
+
     // Modal Variables States
     const [dialogOpen, setDialogOpen] = useState(false);
     const [dialogMode, setDialogMode] = useState(null);
@@ -53,7 +60,23 @@ function SalesReportTable(startDate, endDate) {
             try {
                 // Sales
                 const { data: salesData } = await RetrieveSales();
-                setSales(salesData.sales);
+                /* setSales(salesData.sales); */ 
+
+                if (duration?.startDate && duration?.endDate) {
+                    const start = new Date(duration.startDate);
+                    const end = new Date(duration.endDate);
+ 
+                    const filteredSales = salesData.sales.filter(sale => {
+                        const saleDate = new Date(sale.sale_date);
+                        return saleDate >= start && saleDate <= end;
+                    });
+
+                    setSales(filteredSales);
+                } else { 
+                    // setSales(salesData.sales);
+                }
+
+
                 setSalesDeliveries(salesData.deliveries);
                 setSalesItems(salesData.items);
                 setSalesAttachments(salesData.attachments);
@@ -75,7 +98,7 @@ function SalesReportTable(startDate, endDate) {
         fetchAll();
         const interval = setInterval(fetchAll, 2000);
         return () => clearInterval(interval);
-    }, []);
+    }, [duration]);
 
     const handleSalesSubmit = (formData, dialogMode, selectedSalesId) => {
         const payload = {
@@ -95,7 +118,7 @@ function SalesReportTable(startDate, endDate) {
     };
 
     const [order, setOrder] = useState("desc");
-    const [orderBy, setOrderBy] = useState("purchase_date");
+    const [orderBy, setOrderBy] = useState("sale_date");
     const handleSort = (property) => {
         const isAsc = orderBy === property && order === "asc";
         setOrder(isAsc ? "desc" : "asc");
@@ -104,20 +127,43 @@ function SalesReportTable(startDate, endDate) {
 
     const sortedRows = useMemo(() => {
         const filtered = sales.filter((s) => {
-            const p = products.find((p) => p.product_id === s.product_id);
+        const p = products.find((p) => p.product_id === s.product_id);
 
-            return (
-                s.sale_payment_status.toLowerCase().includes(search.toLowerCase()) ||
-                s.delivery_status.toLowerCase().includes(search.toLowerCase()) ||
-                s.customer_name.toLowerCase().includes(search.toLowerCase()) ||
-                (p &&
-                    (p.product_name.toLowerCase().includes(search.toLowerCase()) ||
-                        p.supplier_id.toLowerCase().includes(search.toLowerCase())))
-            );
+        return (
+            s.sale_payment_status.toLowerCase().includes(search.toLowerCase()) ||
+            s.delivery_status.toLowerCase().includes(search.toLowerCase()) ||
+            s.customer_name.toLowerCase().includes(search.toLowerCase()) ||
+            (p &&
+            (p.product_name.toLowerCase().includes(search.toLowerCase()) ||
+                p.supplier_id.toLowerCase().includes(search.toLowerCase())))
+        );
         });
 
         return stableSort(filtered, getComparator(order, orderBy));
     }, [sales, products, search, order, orderBy]);
+ 
+    useEffect(() => {
+        if (setDataToExport) { 
+        const exportData = sortedRows.map((row, index) => {
+            const sales_item = salesItems.find((item) => item.sales_id === row.sales_id);
+            const p = sales_item ? products.find((prod) => prod.product_id === sales_item.product_id) : null;
+
+            return {
+            "No.": index + 1,
+            "Date": dateFormat(row.sale_date),
+            "Customer": row.customer_name,
+            "Product": p ? p.product_name : "N/A",
+            "Quantity_Sold": sales_item ? sales_item.product_quantity : "N/A",
+            "Selling_Price": p ? p.selling_price : "N/A",
+            "Total": row.total_sale ?? "N/A",
+            "Payment_Status": row.sale_payment_status,
+            "Delivery_Status": row.delivery_status,
+            };
+        });
+
+        setDataToExport(exportData);
+        }
+    }, [sortedRows, salesItems, products, setDataToExport]);
 
     const salesSummary = useMemo(() => {
         const summary = {};
@@ -158,7 +204,7 @@ function SalesReportTable(startDate, endDate) {
             if (!summary[status]) {
                 summary[status] = 0;
             }
-            summary[status] += 1; // bilangin lang kada status
+            summary[status] += 1;  
         });
 
         return Object.entries(summary).map(([name, qty]) => ({ name, qty }));
@@ -181,12 +227,12 @@ function SalesReportTable(startDate, endDate) {
             name,
             count,
         }));
-    }, [sales]); 
+    }, [sales]);
 
-    const COLORS = ["#E67600", "#f9a03f", "#FFBB28", "#FF8042", "#82ca9d"]; 
+    const COLORS = ["#E67600", "#f9a03f", "#FFBB28", "#FF8042", "#82ca9d"];
 
     return (
-        < > 
+        < >
             <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2, px: 1 }} spacing={2}>
                 <Typography variant="h4" sx={{ fontWeight: 700, mb: 5, mt: 0 }}>
                     Sales Report
@@ -384,7 +430,7 @@ function SalesReportTable(startDate, endDate) {
                         </BarChart>
                     </ResponsiveContainer>
                 </Paper>
-                
+
                 {/* Bar Chart */}
                 <Paper sx={{ p: 2, borderRadius: 2, flex: 1 }}>
                     <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 600 }}>
@@ -403,7 +449,7 @@ function SalesReportTable(startDate, endDate) {
                             </Bar>
                         </BarChart>
                     </ResponsiveContainer>
-                </Paper> 
+                </Paper>
             </Stack>
 
             {/* <Paper sx={{ mt: 4, p: 2, borderRadius: 2 }}>

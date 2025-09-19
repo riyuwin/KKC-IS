@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Box, Paper, Typography, Tabs, Tab, Stack, Button, Divider } from "@mui/material";
 import SearchBar from "../components/SearchBar";
 import { MdSearch } from "react-icons/md";
@@ -28,7 +28,9 @@ function Reports() {
     endDate: "",
   });
 
-  console.log("Duration: ", duration?.startDate);
+  const [dataToExport, setDataToExport] = useState([]); 
+  //console.table(dataToExport);
+
 
   return (
     <Box sx={{ p: 2, fontFamily: "Poppins, sans-serif", }}>
@@ -45,7 +47,7 @@ function Reports() {
         </Tabs>
       </Box>
 
-      <DurationFilter duration={duration} onDurationChange={setDuration} />;
+      <DurationFilter duration={duration} onDurationChange={setDuration} dataToExport={dataToExport} tab={tab}/>;
 
       {/* Divider */}
       <Divider sx={{ my: 4 }} />
@@ -63,9 +65,10 @@ function Reports() {
             <Box sx={{ mt: 0 }}>
 
               <SalesReportTable 
-                startDate={duration?.startDate}
-                endDate={duration?.endDate}
+                duration={duration} 
+                setDataToExport={setDataToExport}
               />
+              
 
             </Box>
           </>
@@ -73,7 +76,10 @@ function Reports() {
           <>
             <Box sx={{ mt: 0 }}>
 
-              <PurchaseReportTable />
+              <PurchaseReportTable
+                duration={duration} 
+                setDataToExport={setDataToExport}
+              />
 
             </Box>
           </>
