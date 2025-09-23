@@ -230,7 +230,7 @@ function PurchaseReportTable({ duration, setDataToExport }) {
                     component={Paper}
                     sx={{ borderRadius: 2, border: "1px solid #ddd", boxShadow: "0px 2px 8px rgba(0,0,0,0.1)", bgcolor: "background.paper" }}
                 >
-                    <TablePager data={sortedRows} resetOn={`${order}-${orderBy}-${searchNow}-${duration?.startDate}-${duration?.endDate}`} initialRowsPerPage={5} align="left">
+                    <TablePager data={sortedRows} resetOn={`${order}-${orderBy}-${searchNow}-${duration?.startDate}-${duration?.endDate}`} initialRowsPerPage={10} align="left">
                         {({ pagedRows, Pagination }) => (
                             <>
                                 <Table size="small" sx={{ tableLayout: "fixed" }}>

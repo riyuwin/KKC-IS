@@ -6,6 +6,7 @@ import DurationFilter from "../components/DurationFilter";
 import SalesReportTable from "../components/SalesReportTable";
 import PurchaseReportTable from "../components/PurchaseReportTable";
 import ProductReportTable from "../components/ProductReportTable";
+import StockFilter from "../components/StockFilter";
 
 // A11y Helpers for Tabs
 function a11yProps(index) {
@@ -29,7 +30,9 @@ function Reports() {
   });
 
   const [dataToExport, setDataToExport] = useState([]); 
-  //console.table(dataToExport);
+  //console.table(dataToExport); 
+  
+  const [stockStatus, setStockStatus] = useState("");   
 
 
   return (
@@ -47,7 +50,27 @@ function Reports() {
         </Tabs>
       </Box>
 
-      <DurationFilter duration={duration} onDurationChange={setDuration} dataToExport={dataToExport} tab={tab}/>;
+
+      {tab === 0 ? (
+          <>
+            {/* To Do Exportation */}
+            <StockFilter stockStatus={stockStatus}
+                  onStatusChange={setStockStatus}
+                  dataToExport={dataToExport}/>
+          </>
+        ) : tab === 1 ? (
+          <>
+            <DurationFilter duration={duration} onDurationChange={setDuration} dataToExport={dataToExport} tab={tab}/>
+          </>
+        ) : tab === 2 ? (
+          <>
+            <DurationFilter duration={duration} onDurationChange={setDuration} dataToExport={dataToExport} tab={tab}/>
+          </>
+        ) : tab === 3 ? (
+          <> 
+            {/* To Do Exportation */}
+          </>
+        ) : null}
 
       {/* Divider */}
       <Divider sx={{ my: 4 }} />
@@ -57,7 +80,9 @@ function Reports() {
         {tab === 0 ? (
           <>
             <Box sx={{ mt: 0 }}>
-              <ProductReportTable />
+              <ProductReportTable 
+                stockStatus={stockStatus}
+                setDataToExport={setDataToExport} />
             </Box>
           </>
         ) : tab === 1 ? (
