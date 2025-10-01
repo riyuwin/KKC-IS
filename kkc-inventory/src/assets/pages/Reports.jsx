@@ -7,6 +7,7 @@ import SalesReportTable from "../components/SalesReportTable";
 import PurchaseReportTable from "../components/PurchaseReportTable";
 import ProductReportTable from "../components/ProductReportTable";
 import StockFilter from "../components/StockFilter";
+import OutstandingDeliveriesTable from "../components/OutstandingDeliveriesTable";
 
 // A11y Helpers for Tabs
 function a11yProps(index) {
@@ -52,8 +53,7 @@ function Reports() {
 
 
       {tab === 0 ? (
-          <>
-            {/* To Do Exportation */}
+          <> 
             <StockFilter stockStatus={stockStatus}
                   onStatusChange={setStockStatus}
                   dataToExport={dataToExport}/>
@@ -67,8 +67,10 @@ function Reports() {
             <DurationFilter duration={duration} onDurationChange={setDuration} dataToExport={dataToExport} tab={tab}/>
           </>
         ) : tab === 3 ? (
-          <> 
-            {/* To Do Exportation */}
+          <>  
+            <StockFilter stockStatus={stockStatus}
+                  onStatusChange={setStockStatus}
+                  dataToExport={dataToExport}/> 
           </>
         ) : null}
 
@@ -110,8 +112,12 @@ function Reports() {
           </>
         ) : tab === 3 ? (
           <>
-            <Box sx={{ mt: 0 }}>
+            <Box sx={{ mt: 0 }}>  
 
+              <OutstandingDeliveriesTable
+                duration={duration} 
+                setDataToExport={setDataToExport}
+              />
 
             </Box>
           </>
