@@ -47,6 +47,8 @@ export default function SalesDialog({ open, mode = "Add", accountId, salesId, pr
   const [attachmentIsDisabled, setAttachmentIsDisabled] = useState(true);
   const [attachments, setAttachments] = useState([]);
 
+  /* console.log("Selected salesData: ", salesData); */
+
   const [form, setForm] = useState({
     /* accountId: accountId, */
     warehouse_id: "",
@@ -205,6 +207,16 @@ export default function SalesDialog({ open, mode = "Add", accountId, salesId, pr
     }
   }, [mode, salesData]);
 
+  useEffect(() => {
+    if (selectedProduct && form.product_quantity) {
+      setForm(prev => ({
+        ...prev,
+        total_sale: selectedProduct.selling_price * prev.product_quantity,
+      }));
+    }
+  }, [form.product_quantity, selectedProduct]);
+
+
   return (
     <Dialog
       open={open}
@@ -348,11 +360,12 @@ export default function SalesDialog({ open, mode = "Add", accountId, salesId, pr
             size="small"
             fullWidth
             type="number"
-            value={selectedProduct ? selectedProduct.selling_price * form.product_quantity : 0}
-            onChange={handleChange("total_sale")}
-            disabled={true}
+            value={form.total_sale}
+            disabled
             sx={fieldSx}
           />
+
+
 
 
           <TextField

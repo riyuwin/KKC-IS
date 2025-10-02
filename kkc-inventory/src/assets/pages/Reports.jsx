@@ -56,7 +56,8 @@ function Reports() {
           <> 
             <StockFilter stockStatus={stockStatus}
                   onStatusChange={setStockStatus}
-                  dataToExport={dataToExport}/>
+                  dataToExport={dataToExport}
+                  tab={tab}/>
           </>
         ) : tab === 1 ? (
           <>
@@ -70,7 +71,8 @@ function Reports() {
           <>  
             <StockFilter stockStatus={stockStatus}
                   onStatusChange={setStockStatus}
-                  dataToExport={dataToExport}/> 
+                  dataToExport={dataToExport}
+                  tab={tab}/> 
           </>
         ) : null}
 

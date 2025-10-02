@@ -83,84 +83,86 @@ function ProductReportTable({ stockStatus = "", setDataToExport }) {
     const bodyCellSx = { textAlign: "center", fontSize: "0.90rem", py: 2, px: 1 };
 
     return (
-        <Box sx={{ p: 2, fontFamily: "Poppins, sans-serif" }}>  
-            {/* Header */}
-            <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2, px: 1 }} spacing={2}>
-                <Typography variant="h4" sx={{ fontWeight: 700, mb: 5, mt: 0 }}>
-                    Inventory Summary
-                </Typography>
-                <Stack direction="row" spacing={2}>
-                    <SearchBar search={search} onSearchChange={setSearch} placeholder="Search products..." />
+        <Box sx={{ p: 2, fontFamily: "Poppins, sans-serif" }}>
+            <Box sx={{ p: 2, fontFamily: "Poppins, sans-serif" }}>
+                {/* Header */}
+                <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2, px: 1 }} spacing={2}>
+                    <Typography variant="h4" sx={{ fontWeight: 700, mb: 5, mt: 0 }}>
+                        Inventory Summary
+                    </Typography>
+                    <Stack direction="row" spacing={2}>
+                        <SearchBar search={search} onSearchChange={setSearch} placeholder="Search products..." />
+                    </Stack>
                 </Stack>
-            </Stack>
 
 
-            <Paper elevation={1} sx={{ mt: 2, borderRadius: 2, bgcolor: "transparent" }}>
-                <TableContainer
-                    component={Paper}
-                    sx={{ borderRadius: 2, border: "1px solid #ddd", boxShadow: "0px 2px 8px rgba(0,0,0,0.1)", bgcolor: "background.paper" }}
-                >
-                    <TablePager data={sortedRows} resetOn={`${order}-${orderBy}-${searchNow}`} initialRowsPerPage={10}>
-                        {({ pagedRows, Pagination }) => (
-                            <>
-                                <Table size="small">
-                                    <TableHead sx={{ "& .MuiTableCell-root": headerCellSx }}>
-                                        <TableRow>
-                                            <SortableHeader id="no" label="No." order={order} orderBy={orderBy} onSort={handleSort} />
-                                            <SortableHeader id="product_name" label="Product Name" order={order} orderBy={orderBy} onSort={handleSort} />
-                                            <SortableHeader id="sku" label="SKU/Code" order={order} orderBy={orderBy} onSort={handleSort} />
-                                            <SortableHeader id="description" label="Description" order={order} orderBy={orderBy} onSort={handleSort} />
-                                            <SortableHeader id="unit" label="Unit" order={order} orderBy={orderBy} onSort={handleSort} />
-                                            <SortableHeader id="stock" label="Current Stock" order={order} orderBy={orderBy} onSort={handleSort} />
-                                            <SortableHeader id="cost_price" label="Cost Price" order={order} orderBy={orderBy} onSort={handleSort} />
-                                            <SortableHeader id="selling_price" label="Selling Price" order={order} orderBy={orderBy} onSort={handleSort} />
-                                            <SortableHeader id="_stockStatus.label" label="Stock Status" order={order} orderBy={orderBy} onSort={handleSort} />
-                                        </TableRow>
-                                    </TableHead>
-
-                                    <TableBody sx={{ "& .MuiTableCell-root": bodyCellSx }}>
-                                        {loading ? (
+                <Paper elevation={1} sx={{ mt: 5, borderRadius: 2, bgcolor: "transparent" }}>
+                    <TableContainer
+                        component={Paper}
+                        sx={{ borderRadius: 2, border: "1px solid #ddd", boxShadow: "0px 2px 8px rgba(0,0,0,0.1)", bgcolor: "background.paper" }}
+                    >
+                        <TablePager data={sortedRows} resetOn={`${order}-${orderBy}-${searchNow}`} initialRowsPerPage={10}>
+                            {({ pagedRows, Pagination }) => (
+                                <>
+                                    <Table size="small">
+                                        <TableHead sx={{ "& .MuiTableCell-root": headerCellSx }}>
                                             <TableRow>
-                                                <TableCell colSpan={10} align="center">
-                                                    <Stack direction="row" spacing={1} justifyContent="center" alignItems="center" py={2}>
-                                                        <CircularProgress size={20} />
-                                                        <Typography variant="body2">Loading…</Typography>
-                                                    </Stack>
-                                                </TableCell>
+                                                <SortableHeader id="no" label="No." order={order} orderBy={orderBy} onSort={handleSort} />
+                                                <SortableHeader id="product_name" label="Product Name" order={order} orderBy={orderBy} onSort={handleSort} />
+                                                <SortableHeader id="sku" label="SKU/Code" order={order} orderBy={orderBy} onSort={handleSort} />
+                                                <SortableHeader id="description" label="Description" order={order} orderBy={orderBy} onSort={handleSort} />
+                                                <SortableHeader id="unit" label="Unit" order={order} orderBy={orderBy} onSort={handleSort} />
+                                                <SortableHeader id="stock" label="Current Stock" order={order} orderBy={orderBy} onSort={handleSort} />
+                                                <SortableHeader id="cost_price" label="Cost Price" order={order} orderBy={orderBy} onSort={handleSort} />
+                                                <SortableHeader id="selling_price" label="Selling Price" order={order} orderBy={orderBy} onSort={handleSort} />
+                                                <SortableHeader id="_stockStatus.label" label="Stock Status" order={order} orderBy={orderBy} onSort={handleSort} />
                                             </TableRow>
-                                        ) : pagedRows.length === 0 ? (
-                                            <TableRow>
-                                                <TableCell colSpan={10} align="center">
-                                                    <Typography variant="body2" color="text.secondary" py={2}>
-                                                        No products found.
-                                                    </Typography>
-                                                </TableCell>
-                                            </TableRow>
-                                        ) : (
-                                            pagedRows.map((row, index) => (
-                                                <TableRow key={row.product_id ?? row.id ?? row.sku}>
-                                                    <TableCell>{index + 1}</TableCell>
-                                                    <TableCell>{row.product_name}</TableCell>
-                                                    <TableCell>{row.sku}</TableCell>
-                                                    <TableCell>{row.description}</TableCell>
-                                                    <TableCell>{row.unit}</TableCell>
-                                                    <TableCell>{Number(row.stock ?? 0)}</TableCell>
-                                                    <TableCell>{row.cost_price ? peso(row.cost_price) : ""}</TableCell>
-                                                    <TableCell>{row.selling_price ? peso(row.selling_price) : ""}</TableCell>
-                                                    <TableCell>
-                                                        <Chip size="small" label={row._stockStatus.label} color={row._stockStatus.color} />
+                                        </TableHead>
+
+                                        <TableBody sx={{ "& .MuiTableCell-root": bodyCellSx }}>
+                                            {loading ? (
+                                                <TableRow>
+                                                    <TableCell colSpan={10} align="center">
+                                                        <Stack direction="row" spacing={1} justifyContent="center" alignItems="center" py={2}>
+                                                            <CircularProgress size={20} />
+                                                            <Typography variant="body2">Loading…</Typography>
+                                                        </Stack>
                                                     </TableCell>
                                                 </TableRow>
-                                            ))
-                                        )}
-                                    </TableBody>
-                                </Table>
-                                <Pagination />
-                            </>
-                        )}
-                    </TablePager>
-                </TableContainer>
-            </Paper>
+                                            ) : pagedRows.length === 0 ? (
+                                                <TableRow>
+                                                    <TableCell colSpan={10} align="center">
+                                                        <Typography variant="body2" color="text.secondary" py={2}>
+                                                            No products found.
+                                                        </Typography>
+                                                    </TableCell>
+                                                </TableRow>
+                                            ) : (
+                                                pagedRows.map((row, index) => (
+                                                    <TableRow key={row.product_id ?? row.id ?? row.sku}>
+                                                        <TableCell>{index + 1}</TableCell>
+                                                        <TableCell>{row.product_name}</TableCell>
+                                                        <TableCell>{row.sku}</TableCell>
+                                                        <TableCell>{row.description}</TableCell>
+                                                        <TableCell>{row.unit}</TableCell>
+                                                        <TableCell>{Number(row.stock ?? 0)}</TableCell>
+                                                        <TableCell>{row.cost_price ? peso(row.cost_price) : ""}</TableCell>
+                                                        <TableCell>{row.selling_price ? peso(row.selling_price) : ""}</TableCell>
+                                                        <TableCell>
+                                                            <Chip size="small" label={row._stockStatus.label} color={row._stockStatus.color} />
+                                                        </TableCell>
+                                                    </TableRow>
+                                                ))
+                                            )}
+                                        </TableBody>
+                                    </Table>
+                                    <Pagination />
+                                </>
+                            )}
+                        </TablePager>
+                    </TableContainer>
+                </Paper>
+            </Box>
         </Box>
     );
 }
