@@ -661,43 +661,48 @@ app.post('/purchases', (req, res) => {
         return res.status(400).json({ error: 'Missing or invalid fields.' });
     }
 
-    db.getConnection((err, conn) => {
-        if (err) return res.status(500).json({ error: err.message });
+    getSessionWarehouseId(req, (eWh, whId) => {
+        if (eWh || !whId) return res.status(401).json({ error: 'No warehouse for session' });
 
-        conn.beginTransaction((err) => {
-            if (err) { conn.release(); return res.status(500).json({ error: err.message }); }
+        db.getConnection((err, conn) => {
+            if (err) return res.status(500).json({ error: err.message });
 
-            conn.query(
-                `INSERT INTO purchases (purchase_date, supplier_id, total_cost, purchase_status, purchase_payment_status)
-         VALUES (?,?,?,?,?)`,
-                [purchase_date, supplier_id, item_total, purchase_status, purchase_payment_status],
-                (e, result) => {
-                    if (e) return conn.rollback(() => { conn.release(); res.status(500).json({ error: e.message }); });
+            conn.beginTransaction((err) => {
+                if (err) { conn.release(); return res.status(500).json({ error: err.message }); }
 
-                    const newPurchaseId = result.insertId;
+                conn.query(
+                    `INSERT INTO purchases
+             (purchase_date, warehouse_id, supplier_id, total_cost, purchase_status, purchase_payment_status)
+           VALUES (?,?,?,?,?,?)`,
+                    [purchase_date, whId, supplier_id, item_total, purchase_status, purchase_payment_status],
+                    (e, result) => {
+                        if (e) return conn.rollback(() => { conn.release(); res.status(500).json({ error: e.message }); });
 
-                    conn.query(
-                        `INSERT INTO purchase_items (purchase_id, product_id, quantity, unit_cost, total_cost, qty_received)
-             VALUES (?,?,?,?,?,?)`,
-                        [newPurchaseId, product_id, qty, ucost, item_total, recv],
-                        (e2) => {
-                            if (e2) return conn.rollback(() => { conn.release(); res.status(500).json({ error: e2.message }); });
+                        const newPurchaseId = result.insertId;
 
-                            conn.commit((e3) => {
-                                conn.release();
-                                // Apply stock movement after commit (safe side)
-                                applyReceivedToStock({ product_id, qty_received_delta: recv, purchase_id: newPurchaseId }, (e4) => {
-                                    if (e4) return res.status(500).json({ error: e4.message });
-                                    res.json({ message: 'Purchase created', purchase_id: newPurchaseId });
+                        conn.query(
+                            `INSERT INTO purchase_items (purchase_id, product_id, quantity, unit_cost, total_cost, qty_received)
+               VALUES (?,?,?,?,?,?)`,
+                            [newPurchaseId, product_id, qty, ucost, item_total, recv],
+                            (e2) => {
+                                if (e2) return conn.rollback(() => { conn.release(); res.status(500).json({ error: e2.message }); });
+
+                                conn.commit((e3) => {
+                                    conn.release();
+                                    applyReceivedToStock({ product_id, qty_received_delta: recv, purchase_id: newPurchaseId }, (e4) => {
+                                        if (e4) return res.status(500).json({ error: e4.message });
+                                        res.json({ message: 'Purchase created', purchase_id: newPurchaseId });
+                                    });
                                 });
-                            });
-                        }
-                    );
-                }
-            );
+                            }
+                        );
+                    }
+                );
+            });
         });
     });
 });
+
 
 // PUT /purchases/:id  (update one purchase + its single item)
 app.put('/purchases/:id', (req, res) => {
@@ -709,8 +714,8 @@ app.put('/purchases/:id', (req, res) => {
         quantity,
         unit_cost,
         qty_received,
-        purchase_status,            // optional override, otherwise recomputed
-        purchase_payment_status     // Unpaid | Partially Paid | Fully Paid
+        purchase_status,
+        purchase_payment_status
     } = req.body;
 
     const qty = toInt(quantity);
@@ -719,59 +724,60 @@ app.put('/purchases/:id', (req, res) => {
     const item_total = qty * ucost;
     const status = purchase_status || recomputePurchaseStatus(qty, recv);
 
-    db.getConnection((err, conn) => {
-        if (err) return res.status(500).json({ error: err.message });
+    getSessionWarehouseId(req, (eWh, whId) => {
+        if (eWh || !whId) return res.status(401).json({ error: 'No warehouse for session' });
 
-        conn.beginTransaction((err) => {
-            if (err) { conn.release(); return res.status(500).json({ error: err.message }); }
+        db.getConnection((err, conn) => {
+            if (err) return res.status(500).json({ error: err.message });
 
-            // find existing item to compute delta received
-            conn.query(
-                `SELECT pi.product_id, pi.qty_received
-         FROM purchase_items pi
-         WHERE pi.purchase_id=? LIMIT 1`,
-                [id],
-                (e0, rows0) => {
-                    if (e0) return conn.rollback(() => { conn.release(); res.status(500).json({ error: e0.message }); });
+            conn.beginTransaction((err) => {
+                if (err) { conn.release(); return res.status(500).json({ error: err.message }); }
 
-                    const prev = rows0?.[0];
-                    const prevRecv = Number(prev?.qty_received || 0);
-                    const prevProductId = Number(prev?.product_id || product_id);
-                    const recvDelta = recv - prevRecv;
+                conn.query(
+                    `SELECT pi.product_id, pi.qty_received
+             FROM purchase_items pi
+            WHERE pi.purchase_id=? LIMIT 1`,
+                    [id],
+                    (e0, rows0) => {
+                        if (e0) return conn.rollback(() => { conn.release(); res.status(500).json({ error: e0.message }); });
 
-                    conn.query(
-                        `UPDATE purchases
-               SET purchase_date=?, supplier_id=?, total_cost=?, purchase_status=?, purchase_payment_status=?
-             WHERE purchase_id=?`,
-                        [purchase_date, supplier_id, item_total, status, purchase_payment_status, id],
-                        (e1) => {
-                            if (e1) return conn.rollback(() => { conn.release(); res.status(500).json({ error: e1.message }); });
+                        const prevRecv = Number(rows0?.[0]?.qty_received || 0);
+                        const recvDelta = recv - prevRecv;
 
-                            conn.query(
-                                `UPDATE purchase_items
-                   SET product_id=?, quantity=?, unit_cost=?, total_cost=?, qty_received=?
-                 WHERE purchase_id=?`,
-                                [product_id, qty, ucost, item_total, recv, id],
-                                (e2) => {
-                                    if (e2) return conn.rollback(() => { conn.release(); res.status(500).json({ error: e2.message }); });
+                        conn.query(
+                            `UPDATE purchases
+                  SET purchase_date=?, warehouse_id=?, supplier_id=?, total_cost=?, purchase_status=?, purchase_payment_status=?
+                WHERE purchase_id=?`,
+                            [purchase_date, whId, supplier_id, item_total, status, purchase_payment_status, id],
+                            (e1) => {
+                                if (e1) return conn.rollback(() => { conn.release(); res.status(500).json({ error: e1.message }); });
 
-                                    conn.commit((e3) => {
-                                        conn.release();
-                                        // Adjust stock for the delta
-                                        applyReceivedToStock({ product_id, qty_received_delta: recvDelta, purchase_id: id }, (e4) => {
-                                            if (e4) return res.status(500).json({ error: e4.message });
-                                            res.json({ message: 'Purchase updated' });
+                                conn.query(
+                                    `UPDATE purchase_items
+                      SET product_id=?, quantity=?, unit_cost=?, total_cost=?, qty_received=?
+                    WHERE purchase_id=?`,
+                                    [product_id, qty, ucost, item_total, recv, id],
+                                    (e2) => {
+                                        if (e2) return conn.rollback(() => { conn.release(); res.status(500).json({ error: e2.message }); });
+
+                                        conn.commit((e3) => {
+                                            conn.release();
+                                            applyReceivedToStock({ product_id, qty_received_delta: recvDelta, purchase_id: id }, (e4) => {
+                                                if (e4) return res.status(500).json({ error: e4.message });
+                                                res.json({ message: 'Purchase updated' });
+                                            });
                                         });
-                                    });
-                                }
-                            );
-                        }
-                    );
-                }
-            );
+                                    }
+                                );
+                            }
+                        );
+                    }
+                );
+            });
         });
     });
 });
+
 
 // DELETE /purchases/:id  (removes purchase + item; NOTE: does NOT auto reverse stock)
 app.delete('/purchases/:id', (req, res) => {
@@ -877,175 +883,175 @@ app.post("/sales", upload.array("attachments"), (req, res) => {
 });
 
 app.put("/sales/:id", upload.array("attachments"), (req, res) => {
-  const salesId = req.params.id;
-  const {
-    account_id,
-    warehouse_id,
-    product_id,
-    sale_date,
-    customer_name,
-    product_quantity,
-    total_sale,
-    sale_payment_status,
-    total_delivery_quantity,
-    total_delivered,
-    delivery_status,
-    attachments_id, // IDs to retain
-  } = req.body;
+    const salesId = req.params.id;
+    const {
+        account_id,
+        warehouse_id,
+        product_id,
+        sale_date,
+        customer_name,
+        product_quantity,
+        total_sale,
+        sale_payment_status,
+        total_delivery_quantity,
+        total_delivered,
+        delivery_status,
+        attachments_id, // IDs to retain
+    } = req.body;
 
-  const attachments = req.files || [];
+    const attachments = req.files || [];
 
     const productQuantity = Number(product_quantity);
 
-  console.log("product_quantity: ", product_quantity);
-  console.log("Attachment Ids to retain: ", attachments_id);
+    console.log("product_quantity: ", product_quantity);
+    console.log("Attachment Ids to retain: ", attachments_id);
 
-  if (
-    !account_id ||
-    !warehouse_id ||
-    !product_id ||
-    !sale_date ||
-    !customer_name ||
-    product_quantity == null ||
-    total_sale == null ||
-    !sale_payment_status ||
-    total_delivery_quantity == null ||
-    total_delivered == null ||
-    !delivery_status
-  ) {
-    return res.status(400).json({ error: "Missing required information." });
-  }
+    if (
+        !account_id ||
+        !warehouse_id ||
+        !product_id ||
+        !sale_date ||
+        !customer_name ||
+        product_quantity == null ||
+        total_sale == null ||
+        !sale_payment_status ||
+        total_delivery_quantity == null ||
+        total_delivered == null ||
+        !delivery_status
+    ) {
+        return res.status(400).json({ error: "Missing required information." });
+    }
 
-  const updateSalesQuery = `
+    const updateSalesQuery = `
     UPDATE sales 
     SET account_id = ?, warehouse_id = ?, sale_date = ?, customer_name = ?, 
         total_sale = ?, delivery_status = ?, sale_payment_status = ?, updated_at = NOW()
     WHERE sales_id = ?
   `;
 
-  const updateSalesItemQuery = `
+    const updateSalesItemQuery = `
     UPDATE sales_item 
     SET product_id = ?, product_quantity = ?, updated_at = NOW()
     WHERE sales_id = ?
   `;
 
-  const updateSalesDeliveriesQuery = `
+    const updateSalesDeliveriesQuery = `
     UPDATE sales_deliveries 
     SET total_delivery_quantity = ?, total_delivered = ?, updated_at = NOW()
     WHERE sales_item_id = ?
   `;
 
-  const getExistingAttachmentsQuery = `
+    const getExistingAttachmentsQuery = `
     SELECT attachment_id FROM sales_attachments WHERE sales_delivery_id = ?
   `;
 
-  const deleteAttachmentsQuery = `
+    const deleteAttachmentsQuery = `
     DELETE FROM sales_attachments WHERE attachment_id IN (?)
   `;
 
-  const insertAttachmentsQuery = `
+    const insertAttachmentsQuery = `
     INSERT INTO sales_attachments (sales_delivery_id, file, file_name, uploaded_at, updated_at)
     VALUES (?, ?, ?, NOW(), NOW())
   `;
 
-  // STEP 1: Update sales
-  executeQueryWithCallback(
-    updateSalesQuery,
-    [
-      account_id,
-      warehouse_id,
-      sale_date,
-      customer_name,
-      total_sale,
-      delivery_status,
-      sale_payment_status,
-      salesId,
-    ],
-    (err) => {
-      if (err) return res.status(500).json({ error: "Failed to update sales" });
+    // STEP 1: Update sales
+    executeQueryWithCallback(
+        updateSalesQuery,
+        [
+            account_id,
+            warehouse_id,
+            sale_date,
+            customer_name,
+            total_sale,
+            delivery_status,
+            sale_payment_status,
+            salesId,
+        ],
+        (err) => {
+            if (err) return res.status(500).json({ error: "Failed to update sales" });
 
-      // STEP 2: Get sales_item_id
-      const getSalesItemIdQuery = `SELECT sales_item_id FROM sales_item WHERE sales_id = ? LIMIT 1`;
-      executeQueryWithCallback(getSalesItemIdQuery, [salesId], (err2, rows) => {
-        if (err2 || !rows.length)
-          return res.status(500).json({ error: "Failed to fetch sales_item_id" });
+            // STEP 2: Get sales_item_id
+            const getSalesItemIdQuery = `SELECT sales_item_id FROM sales_item WHERE sales_id = ? LIMIT 1`;
+            executeQueryWithCallback(getSalesItemIdQuery, [salesId], (err2, rows) => {
+                if (err2 || !rows.length)
+                    return res.status(500).json({ error: "Failed to fetch sales_item_id" });
 
-        const salesItemId = rows[0].sales_item_id;
+                const salesItemId = rows[0].sales_item_id;
 
-        // STEP 3: Update sales_item
-        executeQueryWithCallback(updateSalesItemQuery, [product_id, productQuantity, salesId], (err3) => {
-          if (err3) return res.status(500).json({ error: "Failed to update sales item" });
+                // STEP 3: Update sales_item
+                executeQueryWithCallback(updateSalesItemQuery, [product_id, productQuantity, salesId], (err3) => {
+                    if (err3) return res.status(500).json({ error: "Failed to update sales item" });
 
-          // STEP 4: Update sales_deliveries
-          executeQueryWithCallback(
-            updateSalesDeliveriesQuery,
-            [total_delivery_quantity, total_delivered, salesItemId],
-            (err4) => {
-              if (err4) return res.status(500).json({ error: "Failed to update deliveries" });
+                    // STEP 4: Update sales_deliveries
+                    executeQueryWithCallback(
+                        updateSalesDeliveriesQuery,
+                        [total_delivery_quantity, total_delivered, salesItemId],
+                        (err4) => {
+                            if (err4) return res.status(500).json({ error: "Failed to update deliveries" });
 
-              // STEP 5: Get sales_delivery_id
-              const getDeliveryIdQuery = `
+                            // STEP 5: Get sales_delivery_id
+                            const getDeliveryIdQuery = `
                 SELECT sales_delivery_id FROM sales_deliveries WHERE sales_item_id = ? LIMIT 1
               `;
-              executeQueryWithCallback(getDeliveryIdQuery, [salesItemId], (err5, rows2) => {
-                if (err5 || !rows2.length)
-                  return res.status(500).json({ error: "Failed to fetch sales_delivery_id" });
+                            executeQueryWithCallback(getDeliveryIdQuery, [salesItemId], (err5, rows2) => {
+                                if (err5 || !rows2.length)
+                                    return res.status(500).json({ error: "Failed to fetch sales_delivery_id" });
 
-                const salesDeliveryId = rows2[0].sales_delivery_id;
+                                const salesDeliveryId = rows2[0].sales_delivery_id;
 
-                // STEP 6: Handle attachments
-                executeQueryWithCallback(getExistingAttachmentsQuery, [salesDeliveryId], (err6, existingRows) => {
-                    if (err6) return res.status(500).json({ error: "Failed to fetch existing attachments" });
- 
-                    const existingIds = existingRows.map(r => Number(r.attachment_id));
- 
-                    let retainedIds = [];
-                    if (Array.isArray(attachments_id)) {
-                        retainedIds = attachments_id.map(id => Number(id));
-                    } else if (typeof attachments_id === "string") { 
-                        retainedIds = attachments_id.split(",").map(id => Number(id.trim()));
-                    }
- 
-                    const toDeleteIds = existingIds.filter(id => !retainedIds.includes(id)); 
-                    if (toDeleteIds.length > 0) {
-                        executeQueryWithCallback(deleteAttachmentsQuery, [toDeleteIds], (err7) => {
-                        if (err7) return res.status(500).json({ error: "Failed to delete removed attachments" });
-                        insertNewFiles();
-                        });
-                    } else {
-                        insertNewFiles();
-                    }
- 
-                    function insertNewFiles() {
-                        if (!attachments.length) return res.json({ message: "Sales updated successfully" });
+                                // STEP 6: Handle attachments
+                                executeQueryWithCallback(getExistingAttachmentsQuery, [salesDeliveryId], (err6, existingRows) => {
+                                    if (err6) return res.status(500).json({ error: "Failed to fetch existing attachments" });
 
-                        const insertPromises = attachments.map(file => {
-                        return new Promise((resolve, reject) => {
-                            executeQueryWithCallback(
-                            insertAttachmentsQuery,
-                            [salesDeliveryId, file.buffer, file.originalname],
-                            (err8) => {
-                                if (err8) reject(err8);
-                                else resolve();
-                            }
-                            );
-                        });
-                        });
+                                    const existingIds = existingRows.map(r => Number(r.attachment_id));
 
-                        Promise.all(insertPromises)
-                        .then(() => res.json({ message: "Sales updated successfully with attachments" }))
-                        .catch(() => res.status(500).json({ error: "Failed to insert new attachments" }));
-                    }
-                    });
+                                    let retainedIds = [];
+                                    if (Array.isArray(attachments_id)) {
+                                        retainedIds = attachments_id.map(id => Number(id));
+                                    } else if (typeof attachments_id === "string") {
+                                        retainedIds = attachments_id.split(",").map(id => Number(id.trim()));
+                                    }
+
+                                    const toDeleteIds = existingIds.filter(id => !retainedIds.includes(id));
+                                    if (toDeleteIds.length > 0) {
+                                        executeQueryWithCallback(deleteAttachmentsQuery, [toDeleteIds], (err7) => {
+                                            if (err7) return res.status(500).json({ error: "Failed to delete removed attachments" });
+                                            insertNewFiles();
+                                        });
+                                    } else {
+                                        insertNewFiles();
+                                    }
+
+                                    function insertNewFiles() {
+                                        if (!attachments.length) return res.json({ message: "Sales updated successfully" });
+
+                                        const insertPromises = attachments.map(file => {
+                                            return new Promise((resolve, reject) => {
+                                                executeQueryWithCallback(
+                                                    insertAttachmentsQuery,
+                                                    [salesDeliveryId, file.buffer, file.originalname],
+                                                    (err8) => {
+                                                        if (err8) reject(err8);
+                                                        else resolve();
+                                                    }
+                                                );
+                                            });
+                                        });
+
+                                        Promise.all(insertPromises)
+                                            .then(() => res.json({ message: "Sales updated successfully with attachments" }))
+                                            .catch(() => res.status(500).json({ error: "Failed to insert new attachments" }));
+                                    }
+                                });
 
 
-              });
-            }
-          );
-        });
-      });
-    }
-  );
+                            });
+                        }
+                    );
+                });
+            });
+        }
+    );
 });
 
 
@@ -1230,6 +1236,657 @@ app.delete("/documents/:id", (req, res) => {
     });
 });
 
+
+// ===== helpers =====
+function toInt(v) { const n = Number(v); return Number.isFinite(n) ? Math.trunc(n) : 0; }
+
+function adjustProductStock({ product_id, delta }, cb) {
+    const pid = toInt(product_id);
+    const d = toInt(delta);
+    if (!pid || d === 0) return cb?.(null);
+
+    db.getConnection((err, conn) => {
+        if (err) return cb?.(err);
+        conn.beginTransaction(err => {
+            if (err) { conn.release(); return cb?.(err); }
+
+            conn.query('SELECT stock FROM products WHERE product_id=? FOR UPDATE', [pid], (e1, rows) => {
+                if (e1) return conn.rollback(() => { conn.release(); cb?.(e1); });
+                if (!rows?.length) return conn.rollback(() => { conn.release(); cb?.(new Error('Product not found')); });
+
+                const current = toInt(rows[0].stock);
+                const next = current + d;
+                if (next < 0) return conn.rollback(() => { conn.release(); cb?.(new Error('Insufficient stock to apply this change')); });
+
+                conn.query('UPDATE products SET stock=? WHERE product_id=?', [next, pid], e2 => {
+                    if (e2) return conn.rollback(() => { conn.release(); cb?.(e2); });
+                    const status = computeStockStatus(next); // you already have this function
+                    conn.query('UPDATE products SET stock_status=? WHERE product_id=?', [status, pid], e3 => {
+                        if (e3) return conn.rollback(() => { conn.release(); cb?.(e3); });
+                        conn.commit(e4 => { conn.release(); cb?.(e4 || null); });
+                    });
+                });
+            });
+        });
+    });
+}
+
+// ---- stock movement + warehouse helpers ----
+function getSessionWarehouseId(req, cb) {
+    const uid = req.session?.user?.account_id;
+    if (!uid) return cb(null, null);
+    db.query(
+        'SELECT warehouse_id FROM accounts WHERE account_id=? LIMIT 1',
+        [uid],
+        (err, rows) => {
+            if (err) return cb(err);
+            cb(null, rows?.[0]?.warehouse_id || null);
+        }
+    );
+}
+
+
+// Get warehouse info (id + name) of the logged in account
+function getWarehouseInfo(req, cb) {
+    const uid = req.session?.user?.account_id;
+    if (!uid) return cb(new Error('Not authenticated'));
+    const sql = `
+    SELECT a.warehouse_id, w.warehouse_name
+    FROM accounts a
+    LEFT JOIN warehouse w ON w.warehouse_id = a.warehouse_id
+    WHERE a.account_id = ? LIMIT 1
+  `;
+    db.query(sql, [uid], (err, rows) => {
+        if (err) return cb(err);
+        if (!rows?.length) return cb(new Error('Warehouse not found for user'));
+        cb(null, { warehouse_id: rows[0].warehouse_id, warehouse_name: rows[0].warehouse_name || 'Warehouse' });
+    });
+}
+
+// Create a list of labels for the chart ranges
+function makeLabels(mode) {
+    const labels = [];
+    const today = new Date();
+    function fmtDate(d) { return d.toISOString().slice(0, 10); }          // YYYY-MM-DD
+    function fmtMonth(d) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; }
+    function fmtWeek(d) { // ISO week label e.g. 2025-W07
+        const tmp = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+        // Thursday in current week decides the year
+        tmp.setUTCDate(tmp.getUTCDate() + 4 - (tmp.getUTCDay() || 7));
+        const yearStart = new Date(Date.UTC(tmp.getUTCFullYear(), 0, 1));
+        const weekNo = Math.ceil((((tmp - yearStart) / 86400000) + 1) / 7);
+        return `${tmp.getUTCFullYear()}-W${String(weekNo).padStart(2, '0')}`;
+    }
+
+    if (mode === 'daily') {
+        for (let i = 6; i >= 0; i--) { const d = new Date(today); d.setDate(today.getDate() - i); labels.push(fmtDate(d)); }
+    } else if (mode === 'weekly') {
+        for (let i = 7; i >= 0; i--) { const d = new Date(today); d.setDate(today.getDate() - i * 7); labels.push(fmtWeek(d)); }
+    } else { // monthly
+        for (let i = 11; i >= 0; i--) { const d = new Date(today); d.setMonth(today.getMonth() - i, 1); labels.push(fmtMonth(d)); }
+    }
+    return labels;
+}
+
+
+
+function resolveWarehouseForSalesReturn(req, sales_item_id, cb) {
+    if (sales_item_id) {
+        const sql = `
+      SELECT s.warehouse_id
+      FROM sales_item si
+      JOIN sales s ON s.sales_id = si.sales_id
+      WHERE si.sales_item_id = ? LIMIT 1
+    `;
+        db.query(sql, [toInt(sales_item_id)], (e, rows) => {
+            if (e) return cb(e);
+            if (rows?.length) return cb(null, rows[0].warehouse_id || null);
+            getSessionWarehouseId(req, cb);
+        });
+    } else {
+        getSessionWarehouseId(req, cb);
+    }
+}
+
+// default to session warehouse
+function resolveWarehouseForPurchaseReturn(req, purchase_item_id, cb) {
+    getSessionWarehouseId(req, cb);
+}
+
+// Write an auditable 'ledger' line into stock_movements
+function recordStockMovement(
+    { product_id, warehouse_id = null, quantity, movement_type, sales_return_id = null, purchase_return_id = null },
+    cb
+) {
+    const sql = `
+    INSERT INTO stock_movements
+      (product_id, warehouse_id, quantity, movement_type, sales_returns, purchase_returns)
+    VALUES (?,?,?,?,?,?)
+  `;
+    const params = [
+        toInt(product_id),
+        warehouse_id,
+        toInt(quantity),
+        movement_type,
+        sales_return_id ? toInt(sales_return_id) : null,
+        purchase_return_id ? toInt(purchase_return_id) : null
+    ];
+    db.query(sql, params, (err) => cb?.(err || null));
+}
+
+
+
+// SALES RETURNS
+app.get('/returns/sales', (req, res) => {
+    const search = (req.query.search || '').trim();
+    const like = `%${search}%`;
+    const sql = `
+    SELECT 
+      sr.sales_return_id,
+      sr.sale_return_date AS date,
+      sr.product_id,
+      p.product_name AS product,
+      sr.quantity,
+      sr.reason,
+      sr.customer_name,
+      sr.confirmed
+    FROM sales_returns sr
+    JOIN products p ON p.product_id = sr.product_id
+    ${search ? `WHERE p.product_name LIKE ? OR sr.customer_name LIKE ? OR sr.reason LIKE ?` : ''}
+    ORDER BY sr.sale_return_date DESC, sr.sales_return_id DESC
+  `;
+    const params = search ? [like, like, like] : [];
+    db.query(sql, params, (err, rows) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json(rows);
+    });
+});
+
+app.post('/returns/sales', (req, res) => {
+    const { sale_return_date, product_id, sales_item_id = null, quantity, reason, customer_name, confirmed = false } = req.body;
+    const qty = toInt(quantity);
+    if (!sale_return_date || !product_id || !qty || !reason || !customer_name) {
+        return res.status(400).json({ error: 'Missing required fields.' });
+    }
+
+    const sql = `
+    INSERT INTO sales_returns (sale_return_date, product_id, sales_item_id, quantity, reason, customer_name, confirmed)
+    VALUES (?,?,?,?,?,?,?)
+  `;
+    const params = [sale_return_date, product_id, sales_item_id || null, qty, reason, customer_name, confirmed ? 1 : 0];
+
+    db.query(sql, params, (err, result) => {
+        if (err) return res.status(500).json({ error: err.message });
+        const newId = result.insertId;
+
+        if (!confirmed) {
+            return res.json({ message: 'Sales return created (pending)', sales_return_id: newId });
+        }
+
+        // Pag na confirm: add stock and write a movement (+qty, type 'sales_return')
+        resolveWarehouseForSalesReturn(req, sales_item_id, (eW, whId) => {
+            if (eW) return res.status(500).json({ error: eW.message });
+
+            adjustProductStock({ product_id, delta: +qty }, (e2) => {
+                if (e2) return res.status(500).json({ error: e2.message });
+                recordStockMovement({
+                    product_id, warehouse_id: whId, quantity: +qty, movement_type: 'sales_return', sales_return_id: newId
+                }, (e3) => e3 ? res.status(500).json({ error: e3.message }) : res.json({ message: 'Sales return created (confirmed)', sales_return_id: newId }));
+            });
+        });
+    });
+});
+
+app.put('/returns/sales/:id', (req, res) => {
+    const { id } = req.params;
+    const { sale_return_date, product_id, sales_item_id = null, quantity, reason, customer_name, confirmed } = req.body;
+    const qty = toInt(quantity);
+
+    db.query('SELECT product_id, quantity, confirmed FROM sales_returns WHERE sales_return_id=? LIMIT 1', [id], (e0, rows) => {
+        if (e0) return res.status(500).json({ error: e0.message });
+        if (!rows?.length) return res.status(404).json({ error: 'Return not found' });
+
+        const prev = rows[0];
+
+        const sql = `
+      UPDATE sales_returns
+      SET sale_return_date=?, product_id=?, sales_item_id=?, quantity=?, reason=?, customer_name=?, confirmed=?, updated_at=NOW()
+      WHERE sales_return_id=?
+    `;
+        const params = [sale_return_date, product_id, sales_item_id || null, qty, reason, customer_name, confirmed ? 1 : 0, id];
+
+        db.query(sql, params, (e1) => {
+            if (e1) return res.status(500).json({ error: e1.message });
+
+            resolveWarehouseForSalesReturn(req, sales_item_id, (eW, whId) => {
+                if (eW) return res.status(500).json({ error: eW.message });
+
+                // Handle stock + movement based on state changes
+                if (prev.confirmed && confirmed) {
+                    if (prev.product_id === Number(product_id)) {
+                        const delta = qty - toInt(prev.quantity);  // +delta = increase, -delta = decrease
+                        if (delta === 0) return res.json({ message: 'Sales return updated' });
+
+                        adjustProductStock({ product_id, delta: +delta }, (e2) => {
+                            if (e2) return res.status(500).json({ error: e2.message });
+                            recordStockMovement({
+                                product_id, warehouse_id: whId, quantity: +delta, movement_type: 'sales_return', sales_return_id: toInt(id)
+                            }, (e3) => e3 ? res.status(500).json({ error: e3.message }) : res.json({ message: 'Sales return updated' }));
+                        });
+
+                    } else {
+                        adjustProductStock({ product_id: prev.product_id, delta: -toInt(prev.quantity) }, (e2) => {
+                            if (e2) return res.status(500).json({ error: e2.message });
+                            recordStockMovement({
+                                product_id: prev.product_id, warehouse_id: whId, quantity: -toInt(prev.quantity), movement_type: 'sales_return', sales_return_id: toInt(id)
+                            }, (e2b) => {
+                                if (e2b) return res.status(500).json({ error: e2b.message });
+                                adjustProductStock({ product_id, delta: +qty }, (e3) => {
+                                    if (e3) return res.status(500).json({ error: e3.message });
+                                    recordStockMovement({
+                                        product_id, warehouse_id: whId, quantity: +qty, movement_type: 'sales_return', sales_return_id: toInt(id)
+                                    }, (e4) => e4 ? res.status(500).json({ error: e4.message }) : res.json({ message: 'Sales return updated' }));
+                                });
+                            });
+                        });
+                    }
+
+                } else if (!prev.confirmed && confirmed) {
+                    // Newly confirmed => add stock and movement (+qty)
+                    adjustProductStock({ product_id, delta: +qty }, (e2) => {
+                        if (e2) return res.status(500).json({ error: e2.message });
+                        recordStockMovement({
+                            product_id, warehouse_id: whId, quantity: +qty, movement_type: 'sales_return', sales_return_id: toInt(id)
+                        }, (e3) => e3 ? res.status(500).json({ error: e3.message }) : res.json({ message: 'Sales return updated (now confirmed)' }));
+                    });
+
+                } else if (prev.confirmed && !confirmed) {
+                    // Unconfirm => reverse previous addition (write -prev.qty)
+                    adjustProductStock({ product_id: prev.product_id, delta: -toInt(prev.quantity) }, (e2) => {
+                        if (e2) return res.status(500).json({ error: e2.message });
+                        recordStockMovement({
+                            product_id: prev.product_id, warehouse_id: whId, quantity: -toInt(prev.quantity), movement_type: 'sales_return', sales_return_id: toInt(id)
+                        }, (e3) => e3 ? res.status(500).json({ error: e3.message }) : res.json({ message: 'Sales return updated (now pending)' }));
+                    });
+
+                } else {
+                    res.json({ message: 'Sales return updated' });
+                }
+            });
+        });
+    });
+});
+
+app.delete('/returns/sales/:id', (req, res) => {
+    const { id } = req.params;
+    db.query('SELECT product_id, quantity, confirmed, sales_item_id FROM sales_returns WHERE sales_return_id=? LIMIT 1', [id], (e0, rows) => {
+        if (e0) return res.status(500).json({ error: e0.message });
+        if (!rows?.length) return res.status(404).json({ error: 'Not found' });
+
+        const prev = rows[0];
+
+        db.query('DELETE FROM sales_returns WHERE sales_return_id=?', [id], (e1) => {
+            if (e1) return res.status(500).json({ error: e1.message });
+
+            resolveWarehouseForSalesReturn(req, prev.sales_item_id, (eW, whId) => {
+                if (eW) return res.status(500).json({ error: eW.message });
+
+                if (prev.confirmed) {
+                    adjustProductStock({ product_id: prev.product_id, delta: -toInt(prev.quantity) }, (e2) => {
+                        if (e2) return res.status(500).json({ error: e2.message });
+                        recordStockMovement({
+                            product_id: prev.product_id, warehouse_id: whId, quantity: -toInt(prev.quantity), movement_type: 'sales_return', sales_return_id: toInt(id)
+                        }, (e3) => e3 ? res.status(500).json({ error: e3.message }) : res.json({ message: 'Sales return deleted (stock reversed)' }));
+                    });
+                } else {
+                    res.json({ message: 'Sales return deleted' });
+                }
+            });
+        });
+    });
+});
+
+
+// PURCHASE RETURNS
+app.get('/returns/purchase', (req, res) => {
+    const search = (req.query.search || '').trim();
+    const like = `%${search}%`;
+    const sql = `
+    SELECT 
+      pr.purchase_return_id,
+      pr.purchase_return_date AS date,
+      pr.product_id,
+      p.product_name AS product,
+      pr.quantity,
+      pr.reason,
+      pr.supplier_id,
+      s.supplier_name,
+      pr.confirmed
+    FROM purchase_returns pr
+    JOIN products  p ON p.product_id   = pr.product_id
+    LEFT JOIN suppliers s ON s.supplier_id  = pr.supplier_id
+    ${search ? `WHERE p.product_name LIKE ? OR s.supplier_name LIKE ? OR pr.reason LIKE ?` : ''}
+    ORDER BY pr.purchase_return_date DESC, pr.purchase_return_id DESC
+  `;
+    const params = search ? [like, like, like] : [];
+    db.query(sql, params, (err, rows) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json(rows);
+    });
+});
+
+app.post('/returns/purchase', (req, res) => {
+    const { purchase_return_date, product_id, purchase_item_id = null, quantity, reason, supplier_id, confirmed = false } = req.body;
+    const qty = toInt(quantity);
+    if (!purchase_return_date || !product_id || !qty || !reason || !supplier_id) {
+        return res.status(400).json({ error: 'Missing required fields.' });
+    }
+
+    const sql = `
+    INSERT INTO purchase_returns (purchase_return_date, product_id, purchase_item_id, quantity, reason, supplier_id, confirmed)
+    VALUES (?,?,?,?,?,?,?)
+  `;
+    const params = [purchase_return_date, product_id, purchase_item_id || null, qty, reason, supplier_id, confirmed ? 1 : 0];
+
+    db.query(sql, params, (err, result) => {
+        if (err) return res.status(500).json({ error: err.message });
+        const newId = result.insertId;
+
+        if (!confirmed) {
+            return res.json({ message: 'Purchase return created (pending)', purchase_return_id: newId });
+        }
+
+        // If conirmed na: subtract stock and write movement (-qty, type 'purchase_return')
+        resolveWarehouseForPurchaseReturn(req, purchase_item_id, (eW, whId) => {
+            if (eW) return res.status(500).json({ error: eW.message });
+
+            adjustProductStock({ product_id, delta: -qty }, (e2) => {
+                if (e2) return res.status(500).json({ error: e2.message });
+                recordStockMovement({
+                    product_id, warehouse_id: whId, quantity: -qty, movement_type: 'purchase_return', purchase_return_id: newId
+                }, (e3) => e3 ? res.status(500).json({ error: e3.message }) : res.json({ message: 'Purchase return created (confirmed)', purchase_return_id: newId }));
+            });
+        });
+    });
+});
+
+app.put('/returns/purchase/:id', (req, res) => {
+    const { id } = req.params;
+    const { purchase_return_date, product_id, purchase_item_id = null, quantity, reason, supplier_id, confirmed } = req.body;
+    const qty = toInt(quantity);
+
+    db.query('SELECT product_id, quantity, confirmed FROM purchase_returns WHERE purchase_return_id=? LIMIT 1', [id], (e0, rows) => {
+        if (e0) return res.status(500).json({ error: e0.message });
+        if (!rows?.length) return res.status(404).json({ error: 'Return not found' });
+
+        const prev = rows[0];
+
+        const sql = `
+      UPDATE purchase_returns
+      SET purchase_return_date=?, product_id=?, purchase_item_id=?, quantity=?, reason=?, supplier_id=?, confirmed=?, updated_at=NOW()
+      WHERE purchase_return_id=?
+    `;
+        const params = [purchase_return_date, product_id, purchase_item_id || null, qty, reason, supplier_id, confirmed ? 1 : 0, id];
+
+        db.query(sql, params, (e1) => {
+            if (e1) return res.status(500).json({ error: e1.message });
+
+            resolveWarehouseForPurchaseReturn(req, purchase_item_id, (eW, whId) => {
+                if (eW) return res.status(500).json({ error: eW.message });
+
+                if (prev.confirmed && confirmed) {
+                    if (prev.product_id === Number(product_id)) {
+                        // When confirmed, purchase return is a negative movement.
+                        const delta = -(qty - toInt(prev.quantity)); // e.g. qty 5->7 => delta = -2
+                        if (delta === 0) return res.json({ message: 'Purchase return updated' });
+
+                        adjustProductStock({ product_id, delta }, (e2) => {
+                            if (e2) return res.status(500).json({ error: e2.message });
+                            recordStockMovement({
+                                product_id, warehouse_id: whId, quantity: delta, movement_type: 'purchase_return', purchase_return_id: toInt(id)
+                            }, (e3) => e3 ? res.status(500).json({ error: e3.message }) : res.json({ message: 'Purchase return updated' }));
+                        });
+
+                    } else {
+                        adjustProductStock({ product_id: prev.product_id, delta: +toInt(prev.quantity) }, (e2) => {
+                            if (e2) return res.status(500).json({ error: e2.message });
+                            recordStockMovement({
+                                product_id: prev.product_id, warehouse_id: whId, quantity: +toInt(prev.quantity), movement_type: 'purchase_return', purchase_return_id: toInt(id)
+                            }, (e2b) => {
+                                if (e2b) return res.status(500).json({ error: e2b.message });
+                                adjustProductStock({ product_id, delta: -qty }, (e3) => {
+                                    if (e3) return res.status(500).json({ error: e3.message });
+                                    recordStockMovement({
+                                        product_id, warehouse_id: whId, quantity: -qty, movement_type: 'purchase_return', purchase_return_id: toInt(id)
+                                    }, (e4) => e4 ? res.status(500).json({ error: e4.message }) : res.json({ message: 'Purchase return updated' }));
+                                });
+                            });
+                        });
+                    }
+
+                } else if (!prev.confirmed && confirmed) {
+                    // Newly confirmed => subtract stock and write movement (-qty)
+                    adjustProductStock({ product_id, delta: -qty }, (e2) => {
+                        if (e2) return res.status(500).json({ error: e2.message });
+                        recordStockMovement({
+                            product_id, warehouse_id: whId, quantity: -qty, movement_type: 'purchase_return', purchase_return_id: toInt(id)
+                        }, (e3) => e3 ? res.status(500).json({ error: e3.message }) : res.json({ message: 'Purchase return updated (now confirmed)' }));
+                    });
+
+                } else if (prev.confirmed && !confirmed) {
+                    // Unconfirm => add back (+prev.qty) and write reversing movement (+prev.qty)
+                    adjustProductStock({ product_id: prev.product_id, delta: +toInt(prev.quantity) }, (e2) => {
+                        if (e2) return res.status(500).json({ error: e2.message });
+                        recordStockMovement({
+                            product_id: prev.product_id, warehouse_id: whId, quantity: +toInt(prev.quantity), movement_type: 'purchase_return', purchase_return_id: toInt(id)
+                        }, (e3) => e3 ? res.status(500).json({ error: e3.message }) : res.json({ message: 'Purchase return updated (now pending)' }));
+                    });
+
+                } else {
+                    res.json({ message: 'Purchase return updated' });
+                }
+            });
+        });
+    });
+});
+
+app.delete('/returns/purchase/:id', (req, res) => {
+    const { id } = req.params;
+    db.query('SELECT product_id, quantity, confirmed, purchase_item_id FROM purchase_returns WHERE purchase_return_id=? LIMIT 1', [id], (e0, rows) => {
+        if (e0) return res.status(500).json({ error: e0.message });
+        if (!rows?.length) return res.status(404).json({ error: 'Not found' });
+
+        const prev = rows[0];
+
+        db.query('DELETE FROM purchase_returns WHERE purchase_return_id=?', [id], (e1) => {
+            if (e1) return res.status(500).json({ error: e1.message });
+
+            resolveWarehouseForPurchaseReturn(req, prev.purchase_item_id, (eW, whId) => {
+                if (eW) return res.status(500).json({ error: eW.message });
+
+                if (prev.confirmed) {
+                    adjustProductStock({ product_id: prev.product_id, delta: +toInt(prev.quantity) }, (e2) => {
+                        if (e2) return res.status(500).json({ error: e2.message });
+                        recordStockMovement({
+                            product_id: prev.product_id, warehouse_id: whId, quantity: +toInt(prev.quantity), movement_type: 'purchase_return', purchase_return_id: toInt(id)
+                        }, (e3) => e3 ? res.status(500).json({ error: e3.message }) : res.json({ message: 'Purchase return deleted (stock reversed)' }));
+                    });
+                } else {
+                    res.json({ message: 'Purchase return deleted' });
+                }
+            });
+        });
+    });
+});
+
+
+// ----- DASHBOARD SUMMARY: totals + warehouse name -----
+// ----- DASHBOARD SUMMARY: totals + warehouse name (REPLACE THIS BLOCK) -----
+app.get('/dashboard/summary', (req, res) => {
+  getWarehouseInfo(req, (e, wh) => {
+    if (e) return res.status(401).json({ error: 'Not authenticated' });
+
+    const wid = wh.warehouse_id;
+
+    // Now both Sales and Purchases are filtered by warehouse_id
+    const qSales     = 'SELECT COALESCE(SUM(total_sale),0) AS total FROM sales     WHERE warehouse_id=?';
+    const qPurchases = 'SELECT COALESCE(SUM(total_cost),0) AS total FROM purchases WHERE warehouse_id=?';
+    const qProducts  = 'SELECT COUNT(*) AS cnt FROM products';
+
+    db.query(qSales, [wid], (e1, r1) => {
+      if (e1) return res.status(500).json({ error: e1.message });
+      db.query(qPurchases, [wid], (e2, r2) => {                       // <-- fixed: pass [wid]
+        if (e2) return res.status(500).json({ error: e2.message });
+        db.query(qProducts, [], (e3, r3) => {
+          if (e3) return res.status(500).json({ error: e3.message });
+          res.json({
+            warehouse: wh,
+            totals: {
+              sales: Number(r1?.[0]?.total || 0),
+              purchases: Number(r2?.[0]?.total || 0),
+              products: Number(r3?.[0]?.cnt || 0)
+            }
+          });
+        });
+      });
+    });
+  });
+});
+
+
+// ----- DASHBOARD SERIES: sales vs purchases daily/weekly/monthly (REPLACE THIS BLOCK) -----
+app.get('/dashboard/series', (req, res) => {
+  const mode = String(req.query.mode || 'weekly').toLowerCase(); // daily | weekly | monthly
+  if (!['daily', 'weekly', 'monthly'].includes(mode)) {
+    return res.status(400).json({ error: 'Invalid mode' });
+  }
+
+  getWarehouseInfo(req, (e, wh) => {
+    if (e) return res.status(401).json({ error: 'Not authenticated' });
+
+    let salesSQL, purchasesSQL, paramsSales = [], paramsPurch = [];
+
+    if (mode === 'daily') {
+      // Last 7 days (today minus 6 days…today), labeled as YYYY-MM-DD
+      salesSQL = `
+        SELECT DATE(sale_date) AS label, COALESCE(SUM(total_sale),0) AS total
+        FROM sales
+        WHERE warehouse_id=? AND sale_date >= DATE_SUB(CURDATE(), INTERVAL 6 DAY)
+        GROUP BY DATE(sale_date)
+      `;
+      purchasesSQL = `
+        SELECT DATE(purchase_date) AS label, COALESCE(SUM(total_cost),0) AS total
+        FROM purchases
+        WHERE warehouse_id=? AND purchase_date >= DATE_SUB(CURDATE(), INTERVAL 6 DAY)
+        GROUP BY DATE(purchase_date)
+      `;
+      paramsSales = [wh.warehouse_id];
+      paramsPurch = [wh.warehouse_id];
+
+    } else if (mode === 'weekly') {
+      // Last 8 ISO weeks, labeled as YYYY-Www (e.g., 2025-W07)
+      salesSQL = `
+        SELECT CONCAT(YEARWEEK(sale_date,1)) AS raw, COALESCE(SUM(total_sale),0) AS total
+        FROM sales
+        WHERE warehouse_id=? AND sale_date >= DATE_SUB(CURDATE(), INTERVAL 56 DAY)
+        GROUP BY YEARWEEK(sale_date,1)
+      `;
+      purchasesSQL = `
+        SELECT CONCAT(YEARWEEK(purchase_date,1)) AS raw, COALESCE(SUM(total_cost),0) AS total
+        FROM purchases
+        WHERE warehouse_id=? AND purchase_date >= DATE_SUB(CURDATE(), INTERVAL 56 DAY)
+        GROUP BY YEARWEEK(purchase_date,1)
+      `;
+      paramsSales = [wh.warehouse_id];
+      paramsPurch = [wh.warehouse_id];
+
+    } else {
+      // monthly: last 12 months, labeled as YYYY-MM
+      salesSQL = `
+        SELECT DATE_FORMAT(sale_date,'%Y-%m') AS label, COALESCE(SUM(total_sale),0) AS total
+        FROM sales
+        WHERE warehouse_id=? AND sale_date >= DATE_SUB(CURDATE(), INTERVAL 365 DAY)
+        GROUP BY DATE_FORMAT(sale_date,'%Y-%m')
+      `;
+      purchasesSQL = `
+        SELECT DATE_FORMAT(purchase_date,'%Y-%m') AS label, COALESCE(SUM(total_cost),0) AS total
+        FROM purchases
+        WHERE warehouse_id=? AND purchase_date >= DATE_SUB(CURDATE(), INTERVAL 365 DAY)
+        GROUP BY DATE_FORMAT(purchase_date,'%Y-%m')
+      `;
+      paramsSales = [wh.warehouse_id];
+      paramsPurch = [wh.warehouse_id];
+    }
+
+    db.query(salesSQL, paramsSales, (e1, rs) => {
+      if (e1) return res.status(500).json({ error: e1.message });
+      db.query(purchasesSQL, paramsPurch, (e2, rp) => {
+        if (e2) return res.status(500).json({ error: e2.message });
+
+        // Labels come from your makeLabels(mode) helper
+        const labels = makeLabels(mode);
+
+        // Map DB rows to label => total
+        const mapSales = new Map();
+        const mapPurch = new Map();
+
+        if (mode === 'weekly') {
+          // Convert YEARWEEK (e.g., 202540) -> '2025-W40'
+          const toW = (raw) => {
+            const s = String(raw);
+            const year = s.slice(0, 4);
+            const wk = s.slice(4);
+            return `${year}-W${wk.padStart(2, '0')}`;
+          };
+          (rs || []).forEach(r => mapSales.set(toW(r.raw), Number(r.total || 0)));
+          (rp || []).forEach(r => mapPurch.set(toW(r.raw), Number(r.total || 0)));
+        } else {
+          (rs || []).forEach(r => mapSales.set(r.label, Number(r.total || 0)));
+          (rp || []).forEach(r => mapPurch.set(r.label, Number(r.total || 0)));
+        }
+
+        const sales = labels.map(l => mapSales.get(l) || 0);
+        const purchases = labels.map(l => mapPurch.get(l) || 0);
+
+        res.json({ mode, labels, sales, purchases });
+      });
+    });
+  });
+});
+
+
+// ----- OUTSTANDING DELIVERIES (table) -----
+app.get('/dashboard/outstanding-deliveries', (req, res) => {
+    const limit = Math.max(1, Math.min(100, Number(req.query.limit || 10)));
+    getWarehouseInfo(req, (e, wh) => {
+        if (e) return res.status(401).json({ error: 'Not authenticated' });
+
+        const sql = `
+      SELECT 
+        s.sales_id,
+        s.sale_date,
+        s.customer_name,
+        p.product_name,
+        si.product_id,
+        si.product_quantity,
+        sd.total_delivery_quantity,
+        sd.total_delivered,
+        (sd.total_delivery_quantity - sd.total_delivered) AS remaining
+      FROM sales s
+      JOIN sales_item si       ON si.sales_id = s.sales_id
+      JOIN products p          ON p.product_id = si.product_id
+      LEFT JOIN sales_deliveries sd ON sd.sales_item_id = si.sales_item_id
+      WHERE s.warehouse_id = ?
+        AND sd.total_delivered < sd.total_delivery_quantity
+      ORDER BY remaining DESC, s.sale_date ASC
+      LIMIT ?
+    `;
+        db.query(sql, [wh.warehouse_id, limit], (err, rows) => {
+            if (err) return res.status(500).json({ error: err.message });
+            res.json(rows || []);
+        });
+    });
+});
 
 
 
