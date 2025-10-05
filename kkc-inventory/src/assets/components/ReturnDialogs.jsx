@@ -1,20 +1,9 @@
 import React, { useEffect, useMemo, useState } from "react";
-import {
-  Dialog, DialogTitle, DialogContent, DialogActions,
-  Button, TextField, MenuItem, Stack, FormControlLabel, Checkbox, Typography
-} from "@mui/material";
-import {
-  RetrieveProducts, RetrieveSuppliers, RetrieveCustomersFromSales
+import {Dialog, DialogTitle, DialogContent, DialogActions,Button, TextField, MenuItem, Stack, FormControlLabel, Checkbox, Typography } from "@mui/material";
+import { RetrieveProducts, RetrieveSuppliers, RetrieveCustomersFromSales
 } from "../logics/returns/ManageReturns";
 
-/**
- * Props:
- *  - mode: 'sales' | 'purchase'
- *  - open: boolean
- *  - onClose: fn
- *  - onSubmit: fn(payload)
- *  - initial: row or null (for edit)
- */
+
 const REASONS = ["Wrong Item","Defective","Others"];
 const today = () => new Date().toISOString().slice(0,10);
 
@@ -29,7 +18,7 @@ export default function ReturnDialog({ mode='sales', open, onClose, onSubmit, in
   const [productOpts, setProductOpts] = useState([]);     // [{label, value, supplier_id, supplier_name}]
   const [customerOpts, setCustomerOpts] = useState([]);   // sales only
 
-  // Filled from product selection (purchase mode: supplier is auto, read-only)
+  // Filled from product selection
   const selectedProduct = useMemo(
     () => productOpts.find(p => p.value === Number(productId)) || null,
     [productOpts, productId]
@@ -50,14 +39,13 @@ export default function ReturnDialog({ mode='sales', open, onClose, onSubmit, in
   }, [mode]);
 
   useEffect(() => {
-    // default values on open / when switching edit vs add
     if (open) {
       if (initial) {
         setDate(initial.sale_return_date?.slice(0,10) || initial.purchase_return_date?.slice(0,10) || initial.date?.slice(0,10) || today());
         setProductId(initial.product_id || "");
         setQuantity(initial.quantity || 1);
         setReason(initial.reason || "Defective");
-        setCustomerName(initial.customer_name || "");      // ignored in purchase mode
+        setCustomerName(initial.customer_name || ""); 
         setConfirmed(!!initial.confirmed);
       } else {
         setDate(today());
@@ -70,7 +58,6 @@ export default function ReturnDialog({ mode='sales', open, onClose, onSubmit, in
     }
   }, [open, initial]);
 
-  // Products endpoint you already have returns supplier info — we normalize it here
   async function fetchProductsWithSupplier() {
     const res = await fetch(import.meta.env.VITE_API_PRODUCTS);
     const data = await res.json();

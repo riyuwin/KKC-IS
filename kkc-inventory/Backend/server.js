@@ -50,7 +50,8 @@ const db = mysql.createPool({
     database: process.env.DB_NAME,
     waitForConnections: true,
     connectionLimit: 10,
-    queueLimit: 0
+    queueLimit: 0,
+    dateStrings: true, //para di na malito server anong timezone shuta
 });
 
 db.getConnection((err, connection) => {
@@ -788,6 +789,76 @@ app.delete('/purchases/:id', (req, res) => {
     });
 });
 
+
+
+app.post('/purchases/bulk', (req, res) => {
+    const { purchase_date, supplier_id, items = [], payment_status = 'Unpaid' } = req.body;
+    if (!purchase_date || !supplier_id || !Array.isArray(items) || items.length === 0) {
+        return res.status(400).json({ error: 'Missing fields or empty items.' });
+    }
+
+    const clean = items.map(it => ({
+        product_id: Number(it.product_id),
+        quantity: Math.max(0, parseInt(it.quantity || 0, 10)),
+        unit_cost: Number(it.unit_cost || 0),
+        qty_received: Math.max(0, parseInt(it.qty_received || 0, 10)),
+    })).filter(x => x.product_id && x.quantity > 0);
+
+    if (clean.length === 0) return res.status(400).json({ error: 'No valid items.' });
+
+    const purchase_total = clean.reduce((s, x) => s + x.quantity * x.unit_cost, 0);
+    const purchase_status = clean.every(x => x.qty_received >= x.quantity) ? 'Completed' : 'Pending';
+
+    getSessionWarehouseId(req, (eWh, whId) => {
+        if (eWh || !whId) return res.status(401).json({ error: 'No warehouse for session' });
+
+        db.getConnection((err, conn) => {
+            if (err) return res.status(500).json({ error: err.message });
+
+            conn.beginTransaction(err => {
+                if (err) { conn.release(); return res.status(500).json({ error: err.message }); }
+
+                conn.query(
+                    `INSERT INTO purchases (purchase_date, warehouse_id, supplier_id, total_cost, purchase_status, purchase_payment_status)
+           VALUES (?,?,?,?,?,?)`,
+                    [purchase_date, whId, supplier_id, purchase_total, purchase_status, payment_status],
+                    (e1, r1) => {
+                        if (e1) return conn.rollback(() => { conn.release(); res.status(500).json({ error: e1.message }); });
+
+                        const purchase_id = r1.insertId;
+                        const values = clean.map(x => [purchase_id, x.product_id, x.quantity, x.unit_cost, x.quantity * x.unit_cost, x.qty_received]);
+
+                        conn.query(
+                            `INSERT INTO purchase_items (purchase_id, product_id, quantity, unit_cost, total_cost, qty_received)
+               VALUES ?`,
+                            [values],
+                            (e2) => {
+                                if (e2) return conn.rollback(() => { conn.release(); res.status(500).json({ error: e2.message }); });
+
+                                conn.commit(e3 => {
+                                    conn.release();
+                                    let pending = 0, errorSent = false;
+                                    clean.forEach(it => {
+                                        if (it.qty_received > 0) {
+                                            pending++;
+                                            applyReceivedToStock({ product_id: it.product_id, qty_received_delta: it.qty_received, purchase_id }, (e4) => {
+                                                pending--;
+                                                if (e4 && !errorSent) { errorSent = true; return res.status(500).json({ error: e4.message }); }
+                                                if (pending === 0 && !errorSent) res.json({ message: 'Purchase created', purchase_id });
+                                            });
+                                        }
+                                    });
+                                    if (pending === 0) res.json({ message: 'Purchase created', purchase_id });
+                                });
+                            }
+                        );
+                    }
+                );
+            });
+        });
+    });
+});
+
 // Sales ->>>>>>>>>>>>  
 app.post("/sales", upload.array("attachments"), (req, res) => {
     const { account_id, warehouse_id, product_id, sale_date, customer_name, product_quantity, total_sale, sale_payment_status, total_delivery_quantity, total_delivered, delivery_status } = req.body;
@@ -1309,9 +1380,8 @@ function makeLabels(mode) {
     const today = new Date();
     function fmtDate(d) { return d.toISOString().slice(0, 10); }          // YYYY-MM-DD
     function fmtMonth(d) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; }
-    function fmtWeek(d) { // ISO week label e.g. 2025-W07
+    function fmtWeek(d) {
         const tmp = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
-        // Thursday in current week decides the year
         tmp.setUTCDate(tmp.getUTCDate() + 4 - (tmp.getUTCDay() || 7));
         const yearStart = new Date(Date.UTC(tmp.getUTCFullYear(), 0, 1));
         const weekNo = Math.ceil((((tmp - yearStart) / 86400000) + 1) / 7);
@@ -1327,8 +1397,6 @@ function makeLabels(mode) {
     }
     return labels;
 }
-
-
 
 function resolveWarehouseForSalesReturn(req, sales_item_id, cb) {
     if (sales_item_id) {
@@ -1353,7 +1421,6 @@ function resolveWarehouseForPurchaseReturn(req, purchase_item_id, cb) {
     getSessionWarehouseId(req, cb);
 }
 
-// Write an auditable 'ledger' line into stock_movements
 function recordStockMovement(
     { product_id, warehouse_id = null, quantity, movement_type, sales_return_id = null, purchase_return_id = null },
     cb
@@ -1492,7 +1559,7 @@ app.put('/returns/sales/:id', (req, res) => {
                     }
 
                 } else if (!prev.confirmed && confirmed) {
-                    // Newly confirmed => add stock and movement (+qty)
+                    // Newly confirmed --> add stock and movement (+qty)
                     adjustProductStock({ product_id, delta: +qty }, (e2) => {
                         if (e2) return res.status(500).json({ error: e2.message });
                         recordStockMovement({
@@ -1501,7 +1568,7 @@ app.put('/returns/sales/:id', (req, res) => {
                     });
 
                 } else if (prev.confirmed && !confirmed) {
-                    // Unconfirm => reverse previous addition (write -prev.qty)
+                    // Unconfirm --> reverse previous addition (write -prev.qty)
                     adjustProductStock({ product_id: prev.product_id, delta: -toInt(prev.quantity) }, (e2) => {
                         if (e2) return res.status(500).json({ error: e2.message });
                         recordStockMovement({
@@ -1596,7 +1663,7 @@ app.post('/returns/purchase', (req, res) => {
             return res.json({ message: 'Purchase return created (pending)', purchase_return_id: newId });
         }
 
-        // If conirmed na: subtract stock and write movement (-qty, type 'purchase_return')
+        // If conirmed na, subtract stock and write movement (-qty, type 'purchase_return')
         resolveWarehouseForPurchaseReturn(req, purchase_item_id, (eW, whId) => {
             if (eW) return res.status(500).json({ error: eW.message });
 
@@ -1636,7 +1703,7 @@ app.put('/returns/purchase/:id', (req, res) => {
 
                 if (prev.confirmed && confirmed) {
                     if (prev.product_id === Number(product_id)) {
-                        // When confirmed, purchase return is a negative movement.
+                        // Pag confirm na, purchase return is a negative movement.
                         const delta = -(qty - toInt(prev.quantity)); // e.g. qty 5->7 => delta = -2
                         if (delta === 0) return res.json({ message: 'Purchase return updated' });
 
@@ -1665,7 +1732,7 @@ app.put('/returns/purchase/:id', (req, res) => {
                     }
 
                 } else if (!prev.confirmed && confirmed) {
-                    // Newly confirmed => subtract stock and write movement (-qty)
+                    // Newly confirmed --> subtract stock and write movement (-qty)
                     adjustProductStock({ product_id, delta: -qty }, (e2) => {
                         if (e2) return res.status(500).json({ error: e2.message });
                         recordStockMovement({
@@ -1674,7 +1741,7 @@ app.put('/returns/purchase/:id', (req, res) => {
                     });
 
                 } else if (prev.confirmed && !confirmed) {
-                    // Unconfirm => add back (+prev.qty) and write reversing movement (+prev.qty)
+                    // Unconfirm --> add back (+prev.qty) and write reversing movement (+prev.qty)
                     adjustProductStock({ product_id: prev.product_id, delta: +toInt(prev.quantity) }, (e2) => {
                         if (e2) return res.status(500).json({ error: e2.message });
                         recordStockMovement({
@@ -1720,142 +1787,134 @@ app.delete('/returns/purchase/:id', (req, res) => {
 });
 
 
-// ----- DASHBOARD SUMMARY: totals + warehouse name -----
-// ----- DASHBOARD SUMMARY: totals + warehouse name (REPLACE THIS BLOCK) -----
+// DASHBOARD
 app.get('/dashboard/summary', (req, res) => {
-  getWarehouseInfo(req, (e, wh) => {
-    if (e) return res.status(401).json({ error: 'Not authenticated' });
+    getWarehouseInfo(req, (e, wh) => {
+        if (e) return res.status(401).json({ error: 'Not authenticated' });
 
-    const wid = wh.warehouse_id;
+        const wid = wh.warehouse_id;
 
-    // Now both Sales and Purchases are filtered by warehouse_id
-    const qSales     = 'SELECT COALESCE(SUM(total_sale),0) AS total FROM sales     WHERE warehouse_id=?';
-    const qPurchases = 'SELECT COALESCE(SUM(total_cost),0) AS total FROM purchases WHERE warehouse_id=?';
-    const qProducts  = 'SELECT COUNT(*) AS cnt FROM products';
+        // both Sales and Purchases are filtered by warehouse_id
+        const qSales = 'SELECT COALESCE(SUM(total_sale),0) AS total FROM sales     WHERE warehouse_id=?';
+        const qPurchases = 'SELECT COALESCE(SUM(total_cost),0) AS total FROM purchases WHERE warehouse_id=?';
+        const qProducts = 'SELECT COUNT(*) AS cnt FROM products';
 
-    db.query(qSales, [wid], (e1, r1) => {
-      if (e1) return res.status(500).json({ error: e1.message });
-      db.query(qPurchases, [wid], (e2, r2) => {                       // <-- fixed: pass [wid]
-        if (e2) return res.status(500).json({ error: e2.message });
-        db.query(qProducts, [], (e3, r3) => {
-          if (e3) return res.status(500).json({ error: e3.message });
-          res.json({
-            warehouse: wh,
-            totals: {
-              sales: Number(r1?.[0]?.total || 0),
-              purchases: Number(r2?.[0]?.total || 0),
-              products: Number(r3?.[0]?.cnt || 0)
-            }
-          });
+        db.query(qSales, [wid], (e1, r1) => {
+            if (e1) return res.status(500).json({ error: e1.message });
+            db.query(qPurchases, [wid], (e2, r2) => {
+                if (e2) return res.status(500).json({ error: e2.message });
+                db.query(qProducts, [], (e3, r3) => {
+                    if (e3) return res.status(500).json({ error: e3.message });
+                    res.json({
+                        warehouse: wh,
+                        totals: {
+                            sales: Number(r1?.[0]?.total || 0),
+                            purchases: Number(r2?.[0]?.total || 0),
+                            products: Number(r3?.[0]?.cnt || 0)
+                        }
+                    });
+                });
+            });
         });
-      });
     });
-  });
 });
 
 
-// ----- DASHBOARD SERIES: sales vs purchases daily/weekly/monthly (REPLACE THIS BLOCK) -----
 app.get('/dashboard/series', (req, res) => {
-  const mode = String(req.query.mode || 'weekly').toLowerCase(); // daily | weekly | monthly
-  if (!['daily', 'weekly', 'monthly'].includes(mode)) {
-    return res.status(400).json({ error: 'Invalid mode' });
-  }
+    const mode = String(req.query.mode || 'weekly').toLowerCase(); // daily | weekly | monthly
+    if (!['daily', 'weekly', 'monthly'].includes(mode)) {
+        return res.status(400).json({ error: 'Invalid mode' });
+    }
 
-  getWarehouseInfo(req, (e, wh) => {
-    if (e) return res.status(401).json({ error: 'Not authenticated' });
+    getWarehouseInfo(req, (e, wh) => {
+        if (e) return res.status(401).json({ error: 'Not authenticated' });
 
-    let salesSQL, purchasesSQL, paramsSales = [], paramsPurch = [];
+        let salesSQL, purchasesSQL, paramsSales = [], paramsPurch = [];
 
-    if (mode === 'daily') {
-      // Last 7 days (today minus 6 days…today), labeled as YYYY-MM-DD
-      salesSQL = `
+        if (mode === 'daily') {
+            salesSQL = `
         SELECT DATE(sale_date) AS label, COALESCE(SUM(total_sale),0) AS total
         FROM sales
         WHERE warehouse_id=? AND sale_date >= DATE_SUB(CURDATE(), INTERVAL 6 DAY)
         GROUP BY DATE(sale_date)
       `;
-      purchasesSQL = `
+            purchasesSQL = `
         SELECT DATE(purchase_date) AS label, COALESCE(SUM(total_cost),0) AS total
         FROM purchases
         WHERE warehouse_id=? AND purchase_date >= DATE_SUB(CURDATE(), INTERVAL 6 DAY)
         GROUP BY DATE(purchase_date)
       `;
-      paramsSales = [wh.warehouse_id];
-      paramsPurch = [wh.warehouse_id];
+            paramsSales = [wh.warehouse_id];
+            paramsPurch = [wh.warehouse_id];
 
-    } else if (mode === 'weekly') {
-      // Last 8 ISO weeks, labeled as YYYY-Www (e.g., 2025-W07)
-      salesSQL = `
+        } else if (mode === 'weekly') {
+            salesSQL = `
         SELECT CONCAT(YEARWEEK(sale_date,1)) AS raw, COALESCE(SUM(total_sale),0) AS total
         FROM sales
         WHERE warehouse_id=? AND sale_date >= DATE_SUB(CURDATE(), INTERVAL 56 DAY)
         GROUP BY YEARWEEK(sale_date,1)
       `;
-      purchasesSQL = `
+            purchasesSQL = `
         SELECT CONCAT(YEARWEEK(purchase_date,1)) AS raw, COALESCE(SUM(total_cost),0) AS total
         FROM purchases
         WHERE warehouse_id=? AND purchase_date >= DATE_SUB(CURDATE(), INTERVAL 56 DAY)
         GROUP BY YEARWEEK(purchase_date,1)
       `;
-      paramsSales = [wh.warehouse_id];
-      paramsPurch = [wh.warehouse_id];
+            paramsSales = [wh.warehouse_id];
+            paramsPurch = [wh.warehouse_id];
 
-    } else {
-      // monthly: last 12 months, labeled as YYYY-MM
-      salesSQL = `
+        } else {
+            salesSQL = `
         SELECT DATE_FORMAT(sale_date,'%Y-%m') AS label, COALESCE(SUM(total_sale),0) AS total
         FROM sales
         WHERE warehouse_id=? AND sale_date >= DATE_SUB(CURDATE(), INTERVAL 365 DAY)
         GROUP BY DATE_FORMAT(sale_date,'%Y-%m')
       `;
-      purchasesSQL = `
+            purchasesSQL = `
         SELECT DATE_FORMAT(purchase_date,'%Y-%m') AS label, COALESCE(SUM(total_cost),0) AS total
         FROM purchases
         WHERE warehouse_id=? AND purchase_date >= DATE_SUB(CURDATE(), INTERVAL 365 DAY)
         GROUP BY DATE_FORMAT(purchase_date,'%Y-%m')
       `;
-      paramsSales = [wh.warehouse_id];
-      paramsPurch = [wh.warehouse_id];
-    }
-
-    db.query(salesSQL, paramsSales, (e1, rs) => {
-      if (e1) return res.status(500).json({ error: e1.message });
-      db.query(purchasesSQL, paramsPurch, (e2, rp) => {
-        if (e2) return res.status(500).json({ error: e2.message });
-
-        // Labels come from your makeLabels(mode) helper
-        const labels = makeLabels(mode);
-
-        // Map DB rows to label => total
-        const mapSales = new Map();
-        const mapPurch = new Map();
-
-        if (mode === 'weekly') {
-          // Convert YEARWEEK (e.g., 202540) -> '2025-W40'
-          const toW = (raw) => {
-            const s = String(raw);
-            const year = s.slice(0, 4);
-            const wk = s.slice(4);
-            return `${year}-W${wk.padStart(2, '0')}`;
-          };
-          (rs || []).forEach(r => mapSales.set(toW(r.raw), Number(r.total || 0)));
-          (rp || []).forEach(r => mapPurch.set(toW(r.raw), Number(r.total || 0)));
-        } else {
-          (rs || []).forEach(r => mapSales.set(r.label, Number(r.total || 0)));
-          (rp || []).forEach(r => mapPurch.set(r.label, Number(r.total || 0)));
+            paramsSales = [wh.warehouse_id];
+            paramsPurch = [wh.warehouse_id];
         }
 
-        const sales = labels.map(l => mapSales.get(l) || 0);
-        const purchases = labels.map(l => mapPurch.get(l) || 0);
+        db.query(salesSQL, paramsSales, (e1, rs) => {
+            if (e1) return res.status(500).json({ error: e1.message });
+            db.query(purchasesSQL, paramsPurch, (e2, rp) => {
+                if (e2) return res.status(500).json({ error: e2.message });
 
-        res.json({ mode, labels, sales, purchases });
-      });
+                const labels = makeLabels(mode);
+
+                const mapSales = new Map();
+                const mapPurch = new Map();
+
+                if (mode === 'weekly') {
+                    const toW = (raw) => {
+                        const s = String(raw);
+                        const year = s.slice(0, 4);
+                        const wk = s.slice(4);
+                        return `${year}-W${wk.padStart(2, '0')}`;
+                    };
+                    (rs || []).forEach(r => mapSales.set(toW(r.raw), Number(r.total || 0)));
+                    (rp || []).forEach(r => mapPurch.set(toW(r.raw), Number(r.total || 0)));
+                } else {
+                    (rs || []).forEach(r => mapSales.set(r.label, Number(r.total || 0)));
+                    (rp || []).forEach(r => mapPurch.set(r.label, Number(r.total || 0)));
+                }
+
+                const sales = labels.map(l => mapSales.get(l) || 0);
+                const purchases = labels.map(l => mapPurch.get(l) || 0);
+
+                res.json({ mode, labels, sales, purchases });
+            });
+        });
     });
-  });
 });
 
 
-// ----- OUTSTANDING DELIVERIES (table) -----
+// OUTSTANDING DELIVERIES --> alisin ko rinn
 app.get('/dashboard/outstanding-deliveries', (req, res) => {
     const limit = Math.max(1, Math.min(100, Number(req.query.limit || 10)));
     getWarehouseInfo(req, (e, wh) => {

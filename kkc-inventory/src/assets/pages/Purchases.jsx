@@ -7,6 +7,7 @@ import PurchaseDialog from "../components/PurchaseDialog";
 import { PortSuppliers, PortProducts } from "../api_ports/api";
 import SearchBar from "../components/SearchBar";
 import TablePager from "../components/TablePager";
+import { Link } from "react-router-dom";
 
 function peso(n) {
   if (n === "" || n === null || typeof n === "undefined") return "";
@@ -14,20 +15,24 @@ function peso(n) {
   if (Number.isNaN(num)) return n;
   return num.toLocaleString("en-PH", { style: "currency", currency: "PHP", minimumFractionDigits: 2 });
 }
+
 function dateFormat(v) {
   if (!v) return "";
+
   if (typeof v === "string") {
-    const m = v.match(/^(\d{4}-\d{2}-\d{2})/);
-    if (m) {
-      const [y, mo, d] = m[1].split("-").map(Number);
-      const dt = new Date(y, mo - 1, d);
+    const plain = v.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (plain) {
+      const [_, y, mo, d] = plain;
+      const dt = new Date(Number(y), Number(mo) - 1, Number(d));
       return dt.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
     }
   }
+
   const dt = new Date(v);
   if (Number.isNaN(dt.getTime())) return String(v);
   return dt.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
 }
+
 
 function Purchases() {
   const [rows, setRows] = useState([]);
@@ -160,9 +165,10 @@ function Purchases() {
       <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2, px: 1 }} spacing={2}>
         <SearchBar search={search} onSearchChange={setSearch} placeholder="Search purchases..." />
         <Button
+          component={Link}
+          to="/purchases/new"
           variant="contained"
           startIcon={<MdAdd />}
-          onClick={openCreate}
           sx={{ bgcolor: "#E67600", "&:hover": { bgcolor: "#f99f3fff" }, textTransform: "none", fontWeight: 600, borderRadius: 2 }}
         >
           Add Purchase

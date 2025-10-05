@@ -1,13 +1,7 @@
 import Swal from 'sweetalert2';
-import { 
-  PortSalesReturns, 
-  PortPurchaseReturns, 
-  PortProducts, 
-  PortSuppliers, 
-  PortSales
-} from '../../api_ports/api';
+import {  PortSalesReturns,  PortPurchaseReturns,  PortProducts,  PortSuppliers,  PortSales } from '../../api_ports/api';
 
-// ===== lists =====
+
 export async function RetrieveSalesReturns(search='') {
   const url = search ? `${PortSalesReturns}?search=${encodeURIComponent(search)}` : PortSalesReturns;
   const res = await fetch(url);
@@ -42,7 +36,7 @@ export async function RetrieveCustomersFromSales() {
   return unique.map(name => ({ label: name, value: name }));
 }
 
-// ===== mutations (sales returns) =====
+// sales returns
 export async function InsertSalesReturn(payload) {
   const res = await fetch(PortSalesReturns, {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
@@ -70,7 +64,7 @@ export async function DeleteSalesReturn(id) {
   Swal.fire({ icon: 'success', title: 'Deleted', text: 'Sales return removed.' });
 }
 
-// ===== mutations (purchase returns) =====
+// purchase returns
 export async function InsertPurchaseReturn(payload) {
   const res = await fetch(PortPurchaseReturns, {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)

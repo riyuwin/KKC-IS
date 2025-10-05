@@ -12,8 +12,9 @@ import Reports from "./assets/pages/Reports";
 import Documents from "./assets/pages/Documents";
 import Bills from "./assets/pages/Bills";
 import Accounts from "./assets/pages/Accounts";
-import Login from "./assets/pages/Login"; 
+import Login from "./assets/pages/Login";
 import { ValidateUserLoggedIn } from "./assets/logics/auth/ValidateLogin";
+import CreatePurchase from "./assets/pages/CreatePurchase";
 
 // Set the account type here for now: "admin" | "warehouse"
 const ACCOUNT_TYPE = "admin"; // or warehouse. lalagyan ng logic 
@@ -22,9 +23,9 @@ const DRAWER_WIDTH = 260;
 
 function App() {
   const location = useLocation();
-  const isLogin = location.pathname === "/login"; 
+  const isLogin = location.pathname === "/login";
 
-  
+
 
   return (
     <>
@@ -57,6 +58,9 @@ function App() {
             <Route path="/bills" element={<Bills />} />
             {/* Accounts only meaningful for admin, but routing can exist safely */}
             <Route path="/accounts" element={<Accounts />} />
+
+            <Route path="/purchases/new" element={<CreatePurchase />} />
+
           </Routes>
         </Box>
       </Box>
