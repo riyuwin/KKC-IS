@@ -8,6 +8,7 @@ import PurchaseReportTable from "../components/PurchaseReportTable";
 import ProductReportTable from "../components/ProductReportTable";
 import StockFilter from "../components/StockFilter";
 import OutstandingDeliveriesTable from "../components/OutstandingDeliveriesTable";
+import ManagePayables from "../components/ManagePayablesTable";
 
 // A11y Helpers for Tabs
 function a11yProps(index) {
@@ -56,12 +57,11 @@ function Bills() {
       <Paper elevation={0} sx={{ p: 2, mt: 0, borderRadius: 2, bgcolor: "transparent", border: "none" }}>
 
         {tab === 0 ? (
-          <>
-            {/* <Box sx={{ mt: 0 }}>
-              <ProductReportTable 
-                stockStatus={stockStatus}
-                setDataToExport={setDataToExport} />
-            </Box> */}
+          <> 
+            <ManagePayables
+              stockStatus={null}
+              setDataToExport={null} 
+            />
           </>
         ) : tab === 1 ? (
           <>
@@ -76,6 +76,7 @@ function Bills() {
             </Box>
           </>
         )  : null}
+
 
 
 

@@ -30,7 +30,9 @@ export const PortDocuments = `${import.meta.env.VITE_API_DOCUMENTS}`;
 // RETURNS
 export const PortSalesReturns = `${import.meta.env.VITE_API_SALES_RETURNS}`;
 export const PortPurchaseReturns = `${import.meta.env.VITE_API_PURCHASE_RETURNS}`;
-
+ 
+// RETURNS
+export const PortBills = `${import.meta.env.VITE_API_BILLS}`;
 
 // DASHBOARD
 export const PortDashboard = `${import.meta.env.VITE_API_DASHBOARD}`;

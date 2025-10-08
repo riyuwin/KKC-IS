@@ -1948,6 +1948,26 @@ app.get('/dashboard/outstanding-deliveries', (req, res) => {
 });
 
 
+// Warehouse ->>>>>>>>>>>>
+app.post("/bills", (req, res) => {
+    const { warehouse_id, client, user, due_date, company, type_bill, bill_status} = req.body;
+
+    if (!warehouse_id || !client || !user || !due_date || !company || !type_bill || !bill_status) {
+        return res.status(400).json({ error: "Missing fields." });
+    }
+
+    const insertWarehouseQuery = `
+        INSERT INTO payables (warehouse_id, client_merchant, user, due_date, company, type_of_bill, bill_status, updated_at, added_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
+    `;
+
+    executeQuery(
+        insertWarehouseQuery,
+        [warehouse_id, client, user, due_date, company, type_bill, bill_status],
+        res,
+        "payables added successfully"
+    );
+});
 
 
 
