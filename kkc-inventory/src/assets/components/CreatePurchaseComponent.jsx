@@ -29,13 +29,37 @@ export default function PurchaseEditorLeft({
 }) {
   const selectCommon = {
     displayEmpty: true,
-    MenuProps: { PaperProps: { style: { maxHeight: 48 * 6 } } }, 
+    MenuProps: { PaperProps: { style: { maxHeight: 48 * 6 } } },
   };
 
+  // Prevent Select (and TextField) value text from expanding the field
+  const ellipsisSelectSx = {
+    "& .MuiSelect-select": {
+      overflow: "hidden",
+      textOverflow: "ellipsis",
+      whiteSpace: "nowrap",
+      minWidth: 0,
+    },
+    "& .MuiOutlinedInput-input": {
+      overflow: "hidden",
+      textOverflow: "ellipsis",
+      whiteSpace: "nowrap",
+      minWidth: 0,
+    },
+  };
+
+  const renderValueEllipsis = (text) => (
+    <Box sx={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+      {text}
+    </Box>
+  );
+
+  
+
   return (
-    <Stack spacing={3} sx={{ maxWidth: "100%" }}>
+    <Stack spacing={3} sx={{ maxWidth: "100%", minWidth: 0 }}>
       {/* Header */}
-      <Card sx={{ borderRadius: 2, boxShadow: 3 }}>
+      <Card sx={{ borderRadius: 2, boxShadow: 3, minWidth: 0 }}>
         <CardContent sx={{ p: { xs: 2, sm: 3 } }}>
           <Grid container spacing={2}>
             {/* Row 1: Date | Supplier */}
@@ -46,35 +70,35 @@ export default function PurchaseEditorLeft({
                 label="Date"
                 size="small"
                 value={purchaseDate}
-                onChange={(e)=>setPurchaseDate(e.target.value)}
+                onChange={(e) => setPurchaseDate(e.target.value)}
                 InputLabelProps={{ shrink: true }}
                 sx={fieldSx}
               />
             </Grid>
-            <Grid item xs={12} sm={6}>
+            <Grid item xs={12} sm={6} sx={{ minWidth: 0 }}>
               <TextField
                 fullWidth
                 select
                 label="Supplier"
                 size="small"
                 value={supplierId}
-                onChange={(e)=>{ setSupplierId(e.target.value); }}
+                onChange={(e) => { setSupplierId(e.target.value); }}
                 SelectProps={{
                   ...selectCommon,
                   renderValue: (v) => {
-                    if (!v) return "Select supplier…";
+                    if (!v) return renderValueEllipsis("Select supplier…");
                     const sel = suppliers.find(s => String(s.supplier_id) === String(v));
-                    return sel?.supplier_name || "Select supplier…";
+                    return renderValueEllipsis(sel?.supplier_name || "Select supplier…");
                   }
                 }}
                 placeholder="Select supplier…"
                 InputLabelProps={{ shrink: true }}
-                sx={fieldSx}
+                sx={{ ...fieldSx, ...ellipsisSelectSx }}
               >
                 <MenuItem disabled value="">
                   <em>Select supplier…</em>
                 </MenuItem>
-                {suppliers.map(s=>(
+                {suppliers.map(s => (
                   <MenuItem key={s.supplier_id} value={s.supplier_id}>
                     <Tooltip title={s.supplier_name}>
                       <ListItemText
@@ -88,17 +112,20 @@ export default function PurchaseEditorLeft({
             </Grid>
 
             {/* Row 2: Payment Status | Delivery Chip */}
-            <Grid item xs={12} sm={6}>
+            <Grid item xs={12} sm={6} sx={{ minWidth: 0 }}>
               <TextField
                 fullWidth
                 select
                 label="Payment Status"
                 size="small"
                 value={paymentStatus}
-                onChange={(e)=>setPaymentStatus(e.target.value)}
-                SelectProps={{ ...selectCommon, renderValue: (v)=> PS.find(p=>p.value===v)?.label || "Select payment status…" }}
+                onChange={(e) => setPaymentStatus(e.target.value)}
+                SelectProps={{
+                  ...selectCommon,
+                  renderValue: (v) => renderValueEllipsis(PS.find(p => p.value === v)?.label || "Select payment status…")
+                }}
                 InputLabelProps={{ shrink: true }}
-                sx={fieldSx}
+                sx={{ ...fieldSx, ...ellipsisSelectSx }}
               >
                 {PS.map(p => <MenuItem key={p.value} value={p.value}>{p.label}</MenuItem>)}
               </TextField>
@@ -117,12 +144,12 @@ export default function PurchaseEditorLeft({
         </CardContent>
       </Card>
 
-      {/* Add line */}
-      <Card sx={{ borderRadius: 2, boxShadow: 3 }}>
+      {/* Add Product */}
+      <Card sx={{ borderRadius: 2, boxShadow: 3, minWidth: 0 }}>
         <CardContent sx={{ p: { xs: 2, sm: 3 } }}>
           <Grid container spacing={2}>
             {/* Row 1: Product | Qty */}
-            <Grid item xs={12} sm={6}>
+            <Grid item xs={12} sm={6} sx={{ minWidth: 0 }}>
               <TextField
                 fullWidth
                 select
@@ -134,23 +161,23 @@ export default function PurchaseEditorLeft({
                 SelectProps={{
                   ...selectCommon,
                   renderValue: (v) => {
-                    if (!v) return "Select product…";
+                    if (!v) return renderValueEllipsis("Select product…");
                     const sel = productsForSupplier.find(p => String(p.product_id) === String(v));
                     const name = sel?.product_name || "";
-                    const sku  = sel?.sku ? ` (${sel.sku})` : "";
-                    return `${name}${sku}`;
+                    const sku = sel?.sku ? ` (${sel.sku})` : "";
+                    return renderValueEllipsis(`${name}${sku}`);
                   }
                 }}
                 placeholder="Select product…"
                 InputLabelProps={{ shrink: true }}
-                sx={fieldSx}
+                sx={{ ...fieldSx, ...ellipsisSelectSx }}
               >
                 <MenuItem disabled value="">
                   <em>Select product…</em>
                 </MenuItem>
-                {productsForSupplier.map(p=>(
+                {productsForSupplier.map(p => (
                   <MenuItem key={p.product_id} value={String(p.product_id)}>
-                    <Tooltip title={`${p.product_name}${p.sku?` (${p.sku})`:``}`}>
+                    <Tooltip title={`${p.product_name}${p.sku ? ` (${p.sku})` : ``}`}>
                       <ListItemText
                         primaryTypographyProps={{ noWrap: true }}
                         secondaryTypographyProps={{ noWrap: true }}
@@ -169,8 +196,8 @@ export default function PurchaseEditorLeft({
                 size="small"
                 type="number"
                 value={qty}
-                onChange={(e)=>setQty(e.target.value)}
-                inputProps={{ min:0 }}
+                onChange={(e) => setQty(e.target.value)}
+                inputProps={{ min: 0 }}
                 sx={fieldSx}
               />
             </Grid>
@@ -183,14 +210,14 @@ export default function PurchaseEditorLeft({
                 size="small"
                 type="number"
                 value={unit}
-                onChange={(e)=>setUnit(e.target.value)}
-                disabled={!pId}
+                onChange={(e) => setUnit(e.target.value)}
+                disabled
                 sx={fieldSx}
-                InputProps={{ startAdornment:<InputAdornment position="start">₱</InputAdornment> }}
+                InputProps={{ startAdornment: <InputAdornment position="start">₱</InputAdornment> }}
               />
             </Grid>
             <Grid item xs={12} sm={6}>
-              <TextField fullWidth label="Total Cost" size="small" value={peso(addTotal)} disabled sx={fieldSx}/>
+              <TextField fullWidth label="Total Cost" size="small" value={peso(addTotal)} disabled sx={fieldSx} />
             </Grid>
 
             {/* Row 3: Received | Deliverystatus */}
@@ -201,33 +228,33 @@ export default function PurchaseEditorLeft({
                 size="small"
                 type="number"
                 value={recv}
-                onChange={(e)=>setRecv(e.target.value)}
-                inputProps={{ min:0, max:Number(qty)||undefined }}
+                onChange={(e) => setRecv(e.target.value)}
+                inputProps={{ min: 0, max: Number(qty) || undefined }}
                 sx={fieldSx}
               />
             </Grid>
             <Grid item xs={12} sm={6}>
               <TextField fullWidth select label="Delivery Status" size="small" value={addStatus} disabled sx={fieldSx}>
-                {DS.map(d=> <MenuItem key={d.value} value={d.value}>{d.label}</MenuItem>)}
+                {DS.map(d => <MenuItem key={d.value} value={d.value}>{d.label}</MenuItem>)}
               </TextField>
             </Grid>
 
             {/* Row 4: Remaining | Add */}
             <Grid item xs={12} sm={6}>
-              <TextField fullWidth label="Remaining to Receive" size="small" value={addRemain} disabled sx={fieldSx}/>
+              <TextField fullWidth label="Remaining to Receive" size="small" value={addRemain} disabled sx={fieldSx} />
             </Grid>
             <Grid item xs={12} sm={6}>
               <Stack direction="row" spacing={1.5} alignItems="center" sx={{ minHeight: 44 }}>
                 <Chip size="small" color={addStatus === "Completed" ? "success" : "warning"} label={addStatus} />
                 <Box sx={{ flex: 1 }} />
                 <Button
-                  startIcon={<MdAdd/>}
+                  startIcon={<MdAdd />}
                   variant="contained"
                   onClick={onAddLine}
                   disabled={!pId || !Number(qty)}
                   sx={{ minWidth: 140 }}
                 >
-                  Add line
+                  Add Product
                 </Button>
               </Stack>
             </Grid>
@@ -235,73 +262,78 @@ export default function PurchaseEditorLeft({
         </CardContent>
       </Card>
 
-      {/* Lines table  */}
-      <Card sx={{ borderRadius:2, boxShadow:3 }}>
+      {/* Lines table */}
+      <Card sx={{ borderRadius: 2, boxShadow: 3, minWidth: 0 }}>
         <CardContent sx={{ p: 0 }}>
           <Box sx={{ overflowX: "auto" }}>
-            <Table size="small" sx={{ minWidth: 720 }}>
+            <Table size="small" sx={{ tableLayout: "fixed", width: "100%", minWidth: 720 }}>
+              <colgroup>
+                <col style={{ width: 100 }} />   {/* Product */}
+                <col style={{ width: "40%" }} />     {/* Qty Ordered */}
+                <col style={{ width: 110 }} />     {/* Unit ₱ */}
+                <col style={{ width: 110 }} />     {/* Qty Received */}
+                <col style={{ width: 100 }} />     {/* Remaining */}
+                <col style={{ width: 120 }} />     {/* Status */}
+                <col style={{ width: 140 }} />     {/* Total ₱ */}
+                <col style={{ width: 64 }} />      {/* Actions */}
+              </colgroup>
+
               <TableHead>
                 <TableRow>
                   <TableCell>Product</TableCell>
-                  <TableCell align="right">Qty Ordered</TableCell>
-                  <TableCell align="right">Unit ₱</TableCell>
-                  <TableCell align="right">Qty Received</TableCell>
-                  <TableCell align="right">Remaining</TableCell>
+                  <TableCell align="center">Qty Ordered</TableCell>
+                  <TableCell align="center">Unit ₱</TableCell>
+                  <TableCell align="center">Qty Received</TableCell>
+                  <TableCell align="center">Remaining</TableCell>
                   <TableCell align="center">Status</TableCell>
-                  <TableCell align="right">Total ₱</TableCell>
+                  <TableCell align="center">Total ₱</TableCell>
                   <TableCell />
                 </TableRow>
               </TableHead>
+
               <TableBody>
-                {lines.map(l=>{
-                  const q = Number(l.quantity||0);
-                  const r = Number(l.qty_received||0);
-                  const u = Number(l.unit_cost||0);
+                {lines.map(l => {
+                  const q = Number(l.quantity || 0);
+                  const r = Number(l.qty_received || 0);
+                  const u = Number(l.unit_cost || 0);
                   const remain = Math.max(0, q - r);
-                  const status = q>0 && r===q ? "Completed" : "Pending";
-                  const lineTotal = q*u;
+                  const status = q > 0 && r === q ? "Completed" : "Pending";
+                  const lineTotal = q * u;
 
                   return (
                     <TableRow key={l.temp_id}>
-                      <TableCell sx={{ maxWidth: 260 }}>
+                      <TableCell align="center" sx={{ minWidth: 0 }}>
                         <Typography noWrap title={l.product_name}>{l.product_name}</Typography>
                       </TableCell>
 
-                      <TableCell align="right">
-                        <TextField size="small" type="number" value={l.quantity}
-                          onChange={e=>onUpdateCell(l.temp_id,"quantity",Number(e.target.value||0))}
-                          sx={{ width: 100 }} inputProps={{ min:0 }} />
+                      <TableCell align="center">
+                        <Typography variant="body2">{q}</Typography>
                       </TableCell>
-
-                      <TableCell align="right">
-                        <TextField size="small" type="number" value={l.unit_cost}
-                          onChange={e=>onUpdateCell(l.temp_id,"unit_cost",Number(e.target.value||0))}
-                          sx={{ width: 110 }}
-                          InputProps={{ startAdornment:<InputAdornment position="start">₱</InputAdornment> }} />
-                      </TableCell>
-
-                      <TableCell align="right">
-                        <TextField size="small" type="number" value={l.qty_received}
-                          onChange={e=>onUpdateCell(l.temp_id,"qty_received",Number(e.target.value||0))}
-                          sx={{ width: 110 }} inputProps={{ min:0, max:q||undefined }} />
-                      </TableCell>
-
-                      <TableCell align="right">{remain}</TableCell>
 
                       <TableCell align="center">
-                        <Chip size="small" color={status==="Completed"?"success":"warning"} label={status} />
+                        <Typography variant="body2">{peso(u)}</Typography>
                       </TableCell>
 
-                      <TableCell align="right">{peso(lineTotal)}</TableCell>
+                      <TableCell align="center">
+                        <Typography variant="body2">{r}</Typography>
+                      </TableCell>
 
-                      <TableCell align="right">
-                        <IconButton color="error" onClick={()=>onRemoveLine(l.temp_id)}><MdDelete/></IconButton>
+                      <TableCell align="center">{remain}</TableCell>
+
+                      <TableCell align="center">
+                        <Chip size="small" color={status === "Completed" ? "success" : "warning"} label={status} />
+                      </TableCell>
+
+                      <TableCell align="center">{peso(lineTotal)}</TableCell>
+
+                      <TableCell align="center">
+                        <IconButton color="error" onClick={() => onRemoveLine(l.temp_id)}><MdDelete /></IconButton>
                       </TableCell>
                     </TableRow>
                   );
                 })}
 
-                {lines.length===0 && (
+                {lines.length === 0 && (
                   <TableRow>
                     <TableCell colSpan={8}>
                       <Box sx={{ p: 3 }}>
@@ -311,11 +343,11 @@ export default function PurchaseEditorLeft({
                   </TableRow>
                 )}
 
-                {lines.length>0 && (
+                {lines.length > 0 && (
                   <TableRow>
                     <TableCell colSpan={5} />
-                    <TableCell align="right"><b>Grand Total</b></TableCell>
-                    <TableCell align="right"><b>{peso(grandTotal)}</b></TableCell>
+                    <TableCell align="center"><b>Grand Total</b></TableCell>
+                    <TableCell align="center"><b>{peso(grandTotal)}</b></TableCell>
                     <TableCell />
                   </TableRow>
                 )}
