@@ -28,12 +28,16 @@ const swalConfirm = async (title, text) => {
   return res.isConfirmed;
 };
 
-async function fetchProducts(search = '') {
+async function fetchProducts(search = '', warehouseId = null) {
   try {
     const url = new URL(PortProducts);
     if (search) url.searchParams.set('search', search);
-    const res = await fetch(url.toString(), { method: 'GET' });
+    if (warehouseId && warehouseId !== 'all') url.searchParams.set('warehouse_id', warehouseId);
+    // admins can pass 'all' or null to see all
+
+    const res = await fetch(url.toString(), { method: 'GET', credentials: 'include' });
     const data = await res.json();
+    if (res.status === 401) throw new Error('Not logged in or session cookie not sent to /products. Make sure this call uses the same API origin as /session (or enable SameSite=None over HTTPS).');
     if (!res.ok) throw new Error(data.error || 'Failed to fetch products');
     return data;
   } catch (err) {
@@ -41,6 +45,7 @@ async function fetchProducts(search = '') {
     return [];
   }
 }
+
 
 async function createProduct(payload) {
   const ok = await swalConfirm('Add product?', 'This will create a new product.');
@@ -51,6 +56,7 @@ async function createProduct(payload) {
       method: 'POST',
       headers,
       body: JSON.stringify(payload),
+      credentials: 'include',
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Create failed');
@@ -78,6 +84,7 @@ async function updateProduct(id, payload) {
       method: 'PUT',
       headers,
       body: JSON.stringify(payload),
+      credentials: 'include',
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Update failed');
@@ -112,7 +119,7 @@ async function deleteProduct(id, displayName = '') {
   if (!result.isConfirmed) return { cancelled: true };
 
   try {
-    const res = await fetch(`${PortProducts}/${id}`, { method: 'DELETE' });
+    const res = await fetch(`${PortProducts}/${id}`, { method: 'DELETE', credentials: 'include' });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Delete failed');
 

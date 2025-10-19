@@ -1,7 +1,10 @@
-import React from "react";
-import { Routes, Route, Navigate, useLocation } from "react-router-dom";
-import { Box, CssBaseline, Toolbar } from "@mui/material";
+import React, { useState } from "react";
+import { Routes, Route, useLocation } from "react-router-dom";
+import { Box, Toolbar } from "@mui/material";
 import Sidebar from "./assets/components/Sidebar";
+import Topbar from "./assets/components/Topbar";
+import ColorModeProvider from "./assets/components/ColorModeProvider";
+
 import Dashboard from "./assets/pages/Dashboard";
 import Products from "./assets/pages/Products";
 import Purchases from "./assets/pages/Purchases";
@@ -13,59 +16,68 @@ import Documents from "./assets/pages/Documents";
 import Bills from "./assets/pages/Bills";
 import Accounts from "./assets/pages/Accounts";
 import Login from "./assets/pages/Login";
-import { ValidateUserLoggedIn } from "./assets/logics/auth/ValidateLogin";
 import CreatePurchase from "./assets/pages/CreatePurchase";
 
-// Set the account type here for now: "admin" | "warehouse"
-const ACCOUNT_TYPE = "admin"; // or warehouse. lalagyan ng logic 
-
+const ACCOUNT_TYPE = "admin";
 const DRAWER_WIDTH = 260;
 
-function App() {
+function AppShell() {
   const location = useLocation();
   const isLogin = location.pathname === "/login";
-
-
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   return (
-    <>
-      <CssBaseline />
-      <Box sx={{ display: "flex", minHeight: "100vh" }}>
-        {!isLogin && (
-          <Sidebar drawerWidth={DRAWER_WIDTH} accountType={ACCOUNT_TYPE} />
-        )}
+    <Box sx={{ display: "flex", minHeight: "100vh", bgcolor: "background.default", color: "text.primary" }}>
+      {!isLogin && (
+        <>
+          <Topbar
+            drawerWidth={DRAWER_WIDTH}
+            onOpenMobile={() => setMobileOpen(true)}
+          />
+          <Sidebar
+            drawerWidth={DRAWER_WIDTH}
+            accountType={ACCOUNT_TYPE}
+            mobileOpen={mobileOpen}
+            onClose={() => setMobileOpen(false)}
+          />
+        </>
+      )}
 
-        <Box
-          component="main"
-          sx={{
-            flexGrow: 1,
-            p: isLogin ? 0 : 5,
-            bgcolor: "#f5f5f5",
-            minHeight: "100vh",
-          }}
-        >
-          {!isLogin && <Toolbar />}
-          <Routes>
-            <Route path="/login" element={<Login />} />
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/products" element={<Products />} />
-            <Route path="/purchases" element={<Purchases />} />
-            <Route path="/sales" element={<Sales />} />
-            <Route path="/returns" element={<Returns />} />
-            <Route path="/suppliers" element={<Suppliers />} />
-            <Route path="/reports" element={<Reports />} />
-            <Route path="/documents" element={<Documents />} />
-            <Route path="/bills" element={<Bills />} />
-            {/* Accounts only meaningful for admin, but routing can exist safely */}
-            <Route path="/accounts" element={<Accounts />} />
-
-            <Route path="/purchases/new" element={<CreatePurchase />} />
-
-          </Routes>
-        </Box>
+      <Box
+        component="main"
+        sx={{
+          flexGrow: 1,
+          p: isLogin ? 0 : 5,
+          width: "100%",
+          minHeight: "100vh",
+          // AppBar spacer
+          ...(isLogin ? {} : { pt: { xs: 10, md: 12 } }),
+        }}
+      >
+        {!isLogin && <Toolbar sx={{ display: "none" }} />} {/* keeps layout stable */}
+        <Routes>
+          <Route path="/login" element={<Login />} />
+          <Route path="/" element={<Dashboard />} />
+          <Route path="/products" element={<Products />} />
+          <Route path="/purchases" element={<Purchases />} />
+          <Route path="/sales" element={<Sales />} />
+          <Route path="/returns" element={<Returns />} />
+          <Route path="/suppliers" element={<Suppliers />} />
+          <Route path="/reports" element={<Reports />} />
+          <Route path="/documents" element={<Documents />} />
+          <Route path="/bills" element={<Bills />} />
+          <Route path="/accounts" element={<Accounts />} />
+          <Route path="/purchases/new" element={<CreatePurchase />} />
+        </Routes>
       </Box>
-    </>
+    </Box>
   );
 }
 
-export default App;
+export default function App() {
+  return (
+    <ColorModeProvider>
+      <AppShell />
+    </ColorModeProvider>
+  );
+}

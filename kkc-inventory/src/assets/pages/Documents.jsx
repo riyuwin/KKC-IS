@@ -89,7 +89,7 @@ export default function Documents() {
 
   return (
     <Box sx={{ p: 2, fontFamily: "Poppins, sans-serif" }}>
-      <Typography variant="h3" sx={{ fontWeight: 700, mb: 5, mt: -6 }}>Documents</Typography>
+      <Typography variant="h3" sx={{ fontWeight: 700, mb: 5 }}>Documents</Typography>
 
       <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 5, px: 1 }} spacing={2}>
         <SearchBar search={search} onSearchChange={setSearch} placeholder="Search documents..." width={360} />

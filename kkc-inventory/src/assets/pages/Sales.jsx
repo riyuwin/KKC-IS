@@ -117,7 +117,7 @@ function Sales() {
 
   return (
     <Box sx={{ p: 2, fontFamily: "Poppins, sans-serif", }}>
-      <Typography variant="h3" sx={{ fontWeight: 700, mb: 5, mt: -6 }}>
+      <Typography variant="h3" sx={{ fontWeight: 700, mb: 5 }}>
         Sales
       </Typography>
 

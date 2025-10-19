@@ -365,55 +365,107 @@ async function generateUniqueSku(db) {
 
 // PRODUCTS
 
-// GET /products?search=...
+// GET /products?search=...&warehouse_id=<id|'all'>
 app.get('/products', (req, res) => {
     const search = (req.query.search || '').trim();
     const like = `%${search}%`;
-    const sql = `
-    SELECT p.product_id, p.sku, p.product_name, p.description, p.unit,
-           p.stock, p.cost_price, p.selling_price, p.stock_status,
-           s.supplier_id, s.supplier_name
-    FROM products p
-    LEFT JOIN suppliers s ON s.supplier_id = p.supplier_id
-    ${search ? 'WHERE p.product_name LIKE ? OR p.sku LIKE ? OR p.description LIKE ?' : ''}
-    ORDER BY p.created_at DESC
-  `;
-    const params = search ? [like, like, like] : [];
-    db.query(sql, params, (err, rows) => {
-        if (err) return res.status(500).json({ error: err.message });
-        res.json(rows);
+
+    const userRole = req.session?.user?.role || 'warehouse';
+    const isAdmin = String(userRole).toLowerCase() === 'admin';
+
+    const qWarehouseParam = (req.query.warehouse_id || '').trim(); // admin filter
+    const where = [];
+    const params = [];
+
+    if (search) {
+        where.push('(p.product_name LIKE ? OR p.sku LIKE ? OR p.description LIKE ?)');
+        params.push(like, like, like);
+    }
+
+    function runQuery(enforcedWarehouseId = null) {
+        if (!isAdmin) {
+            // warehouse account: enforce their own warehouse
+            where.push('p.warehouse_id = ?');
+            params.push(enforcedWarehouseId);
+        } else {
+            if (qWarehouseParam && qWarehouseParam.toLowerCase() !== 'all') {
+                where.push('p.warehouse_id = ?');
+                params.push(Number(qWarehouseParam));
+            }
+        }
+
+        const sql = `
+      SELECT 
+        p.product_id, p.warehouse_id,
+        w.warehouse_name,
+        p.sku, p.product_name, p.description, p.unit,
+        p.stock, p.cost_price, p.selling_price, p.stock_status,
+        s.supplier_id, s.supplier_name
+      FROM products p
+      LEFT JOIN suppliers s ON s.supplier_id = p.supplier_id
+      LEFT JOIN warehouse w  ON w.warehouse_id  = p.warehouse_id
+      ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
+      ORDER BY p.created_at DESC
+    `;
+        db.query(sql, params, (err, rows) => {
+            if (err) return res.status(500).json({ error: err.message });
+            res.json(rows);
+        });
+    }
+
+    if (isAdmin) {
+        return runQuery(null);
+    }
+
+    getSessionWarehouseId(req, (eWh, wid) => {
+        if (eWh || !wid) return res.status(401).json({ error: 'No warehouse for session' });
+        runQuery(wid);
     });
 });
 
 // POST /products
 app.post('/products', async (req, res) => {
-    try {
-        let { sku, product_name, description, unit, stock, supplier_id, cost_price, selling_price } = req.body;
+  try {
+    let { sku, product_name, description, unit, stock, supplier_id, cost_price, selling_price, warehouse_id } = req.body;
 
-        if (!product_name) return res.status(400).json({ error: 'product_name is required' });
+    if (!product_name) return res.status(400).json({ error: 'product_name is required' });
 
-        stock = parseInt(stock ?? 0, 10) || 0;
-        cost_price = parseFloat(cost_price ?? 0) || 0;
-        selling_price = parseFloat(selling_price ?? 0) || 0;
+    stock = parseInt(stock ?? 0, 10) || 0;
+    cost_price = parseFloat(cost_price ?? 0) || 0;
+    selling_price = parseFloat(selling_price ?? 0) || 0;
 
-        if (!sku) sku = await generateUniqueSku(db);
+    if (!sku) sku = await generateUniqueSku(db);
+    const stock_status = computeStockStatus(stock);
 
-        const stock_status = computeStockStatus(stock);
+    const role = req.session?.user?.role || 'warehouse';
+    const isAdmin = String(role).toLowerCase() === 'admin';
 
-        const sql = `
-      INSERT INTO products (sku, product_name, description, unit, stock, supplier_id, cost_price, selling_price, stock_status)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `;
-        const params = [sku, product_name, description || null, unit || null, stock, supplier_id || null, cost_price, selling_price, stock_status];
-
-        db.query(sql, params, (err, result) => {
-            if (err) return res.status(500).json({ error: err.message });
-            res.json({ message: 'Product created', product_id: result.insertId, sku, stock_status });
-        });
-    } catch (e) {
-        res.status(500).json({ error: e.message });
+    function resolveWarehouseId(cb) {
+      if (!isAdmin) return getSessionWarehouseId(req, cb);
+      if (warehouse_id) return cb(null, Number(warehouse_id));
+      getSessionWarehouseId(req, (e, wid) => cb(e, wid || null));
     }
+
+    resolveWarehouseId((eW, wid) => {
+      if (eW) return res.status(500).json({ error: eW.message });
+      if (!wid) return res.status(400).json({ error: 'warehouse_id is required' });
+
+      const sql = `
+        INSERT INTO products (warehouse_id, sku, product_name, description, unit, stock, supplier_id, cost_price, selling_price, stock_status)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `;
+      const params = [wid, sku, product_name, description || null, unit || null, stock, supplier_id || null, cost_price, selling_price, stock_status];
+
+      db.query(sql, params, (err, result) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json({ message: 'Product created', product_id: result.insertId, sku, stock_status, warehouse_id: wid });
+      });
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
+
 
 // PUT /products/:id
 app.put('/products/:id', (req, res) => {
@@ -1950,7 +2002,7 @@ app.get('/dashboard/outstanding-deliveries', (req, res) => {
 
 // Warehouse ->>>>>>>>>>>>
 app.post("/bills", (req, res) => {
-    const { warehouse_id, client, user, due_date, company, type_bill, bill_status} = req.body;
+    const { warehouse_id, client, user, due_date, company, type_bill, bill_status } = req.body;
 
     if (!warehouse_id || !client || !user || !due_date || !company || !type_bill || !bill_status) {
         return res.status(400).json({ error: "Missing fields." });

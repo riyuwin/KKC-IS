@@ -35,7 +35,7 @@ function weekLabel(isoYearWeek) {
 
 function KpiCard({ title, icon: Icon, value, iconColor = 'text.primary' }) {
   return (
-    <Card sx={{ height: '100%', borderRadius: 3, boxShadow: 3, p: 2.25 }}>
+    <Card sx={{ height: '100%', borderRadius: 2, boxShadow: 3, p: 2.25 }}>
       <CardContent sx={{ p: 0 }}>
         <Typography variant="subtitle2" color="text.secondary">{title}</Typography>
         <Stack direction="row" alignItems="center" spacing={1.5} sx={{ mt: 0.5 }}>
@@ -110,8 +110,8 @@ export default function Dashboard() {
   return (
     <Container maxWidth="lg" sx={{ py: 4 }}>
       {/* Header */}
-      <Box sx={{ mb: 3 }}>
-        <Typography variant="h4" fontWeight={700} sx={{ mt: -7 }}>Dashboard ({whName})</Typography>
+      <Box sx={{ mb: 5 }}>
+        <Typography variant="h3" fontWeight={700}>Dashboard ({whName})</Typography>
       </Box>
 
       {/* KPI row — equal widths via CSS Grid */}
@@ -130,7 +130,7 @@ export default function Dashboard() {
       </Box>
 
       {/* Sales vs Purchases */}
-      <Card sx={{ borderRadius: 3, boxShadow: 3, mb: 3 }}>
+      <Card sx={{ borderRadius: 2, boxShadow: 3, mb: 3 }}>
         <CardContent>
           <Stack direction={{ xs: 'column', sm: 'row' }} alignItems={{ xs: 'start', sm: 'center' }} justifyContent="space-between" sx={{ mb: 2, gap: 1 }}>
             <Typography variant="h6" fontWeight={700}>{chartTitle}</Typography>
@@ -158,7 +158,7 @@ export default function Dashboard() {
       {/* Deliveries + Static Top products row */}
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '2fr 1fr' }, gap: 2, mb: 3 }}>
         {/* Outstanding Deliveries */}
-        <Card sx={{ borderRadius: 3, boxShadow: 3 }}>
+        <Card sx={{ borderRadius: 2, boxShadow: 3 }}>
           <CardContent>
             <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}>
               <LocalShippingIcon />
@@ -202,7 +202,7 @@ export default function Dashboard() {
         </Card>
 
         {/* Static Top Selling Products */}
-        <Card sx={{ borderRadius: 3, boxShadow: 3 }}>
+        <Card sx={{ borderRadius: 2, boxShadow: 3 }}>
           <CardContent>
             <Typography variant="h6" fontWeight={700} sx={{ mb: 1 }}>Top Selling Products (2025)</Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
@@ -214,7 +214,7 @@ export default function Dashboard() {
                 data: topStatic.map((t, i) => ({ id: i, label: t.label, value: t.value })),
                 innerRadius: 40,
                 paddingAngle: 2,
-                cornerRadius: 4,
+                cornerRadius: 2,
                 highlightScope: { faded: 'global', highlighted: 'item' },
                 faded: { additionalRadius: -10, innerRadius: -10 },
                 valueFormatter: v => `${v.value}`
@@ -226,7 +226,7 @@ export default function Dashboard() {
       </Box>
 
       {/* Upcoming bills (static) */}
-      <Card sx={{ borderRadius: 3, boxShadow: 3 }}>
+      <Card sx={{ borderRadius: 2, boxShadow: 3 }}>
         <CardContent>
           <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}>
             <EventNoteIcon />

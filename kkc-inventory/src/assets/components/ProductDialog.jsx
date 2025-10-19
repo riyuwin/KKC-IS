@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Dialog, DialogTitle, DialogContent, DialogActions, Grid, TextField, Button, IconButton, Typography, Stack, Divider, Chip, MenuItem, CircularProgress } from "@mui/material";
+import { Dialog, DialogTitle, DialogContent, DialogActions, Grid, TextField, Button, IconButton, Typography, Stack, Divider, Chip, MenuItem, CircularProgress,} from "@mui/material";
 import { MdClose } from "react-icons/md";
 import Swal from "sweetalert2";
 import { PortSuppliers } from "../api_ports/api";
@@ -11,9 +11,19 @@ function peso(n) {
   if (Number.isNaN(num)) return n;
   return num.toLocaleString("en-PH", { style: "currency", currency: "PHP", minimumFractionDigits: 2 });
 }
+
 const emptyForm = {
-  product_name: "", sku: generateClientSku(), description: "", unit: "",
-  stock: 0, cost_price: "", selling_price: "", supplier_id: "", supplier: "",
+  product_name: "",
+  sku: generateClientSku(),
+  description: "",
+  unit: "",
+  stock: 0,
+  cost_price: "",
+  selling_price: "",
+  supplier_id: "",
+  supplier: "",
+  warehouse_id: "",
+  warehouse_name: "",
 };
 
 const swalError = (text) =>
@@ -39,7 +49,6 @@ async function fetchSuppliers() {
   }));
 }
 
-
 export default function ProductDialog({
   open,
   mode = "create",
@@ -47,10 +56,12 @@ export default function ProductDialog({
   onClose,
   onSubmit,
   onSwitchToEdit,
+  role = "",
+  warehouses = [],
+  defaultWarehouseId = "",
 }) {
   const [form, setForm] = useState({ ...emptyForm });
 
-  // hydrate when dialog opens or initialData changes
   useEffect(() => {
     if (!open) return;
     setForm((prev) => ({
@@ -63,8 +74,14 @@ export default function ProductDialog({
       stock: Number(initialData?.stock ?? emptyForm.stock),
       supplier_id: initialData?.supplier_id ?? "",
       supplier: initialData?.supplier ?? initialData?.supplier_name ?? "",
+      // Prefill warehouse on create (admin only) based on page filter
+      warehouse_id:
+        mode === "create" && String(role).toLowerCase() === "admin"
+          ? (defaultWarehouseId || "")
+          : (initialData?.warehouse_id || ""),
+      warehouse_name: initialData?.warehouse_name || "",
     }));
-  }, [open, initialData]);
+  }, [open, initialData, role, mode, defaultWarehouseId]);
 
   const [suppliers, setSuppliers] = useState([]);
   const [supLoading, setSupLoading] = useState(false);
@@ -88,10 +105,12 @@ export default function ProductDialog({
     return () => { ignore = true; };
   }, [open]);
 
-  const headerTitle = useMemo(() => (mode === "edit" ? "Edit Product" : mode === "view" ? "Product Details" : "Add Product"), [mode]);
+  const headerTitle = useMemo(
+    () => (mode === "edit" ? "Edit Product" : mode === "view" ? "Product Details" : "Add Product"),
+    [mode]
+  );
   const readonly = mode === "view";
 
-// FOrm Error Handler
   const validateForm = () => {
     if (!form.product_name?.trim()) return "Product Name is required.";
     if (!/^\d{10}$/.test(String(form.sku))) return "SKU must be a 10-digit number.";
@@ -99,6 +118,9 @@ export default function ProductDialog({
     if (form.cost_price !== "" && Number(form.cost_price) < 0) return "Cost Price cannot be negative.";
     if (form.selling_price !== "" && Number(form.selling_price) < 0) return "Selling Price cannot be negative.";
     if (!form.supplier_id) return "Please select a supplier.";
+    if (mode === "create" && String(role).toLowerCase() === "admin" && !form.warehouse_id) {
+      return "Please select a warehouse.";
+    }
     return null;
   };
 
@@ -120,9 +142,15 @@ export default function ProductDialog({
       selling_price: form.selling_price === "" ? null : Number(form.selling_price),
       supplier_id: form.supplier_id,
       supplier: selectedSupplierName || "",
+      // Only include warehouse_id when admin is creating
+      ...(mode === "create" && String(role).toLowerCase() === "admin" && form.warehouse_id
+        ? { warehouse_id: Number(form.warehouse_id) }
+        : {}),
     };
     await onSubmit?.(payload);
   };
+
+  const isAdmin = String(role).toLowerCase() === "admin";
 
   return (
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="md">
@@ -133,7 +161,38 @@ export default function ProductDialog({
 
       <DialogContent dividers>
         <Grid container spacing={2}>
-          <Grid item xs={12} md={6}>
+          {isAdmin && mode === "create" && (
+            <Grid item xs={12} md={6}>
+              <TextField
+                select
+                label="Warehouse"
+                value={form.warehouse_id ?? ""}
+                onChange={(e) => setForm((f) => ({ ...f, warehouse_id: e.target.value }))}
+                fullWidth
+                required
+                helperText="Pick where this product belongs"
+              >
+                {warehouses.map((w) => (
+                  <MenuItem key={w.warehouse_id} value={String(w.warehouse_id)}>
+                    {w.warehouse_name}
+                  </MenuItem>
+                ))}
+              </TextField>
+            </Grid>
+          )}
+
+          {isAdmin && mode !== "create" && (form.warehouse_name || form.warehouse_id) && (
+            <Grid item xs={12} md={6}>
+              <TextField
+                label="Warehouse"
+                value={form.warehouse_name || String(form.warehouse_id)}
+                fullWidth
+                InputProps={{ readOnly: true }}
+              />
+            </Grid>
+          )}
+
+          <Grid item xs={12} md={isAdmin ? 6 : 6}>
             <TextField
               label="Product Name" value={form.product_name}
               onChange={(e) => setForm((f) => ({ ...f, product_name: e.target.value }))}
@@ -226,6 +285,7 @@ export default function ProductDialog({
               <Chip label={`Cost: ${form.cost_price === "" ? "—" : peso(form.cost_price)}`} />
               <Chip label={`Price: ${form.selling_price === "" ? "—" : peso(form.selling_price)}`} />
               {form.supplier && <Chip label={`Supplier: ${form.supplier}`} />}
+              {form.warehouse_name && <Chip label={`Warehouse: ${form.warehouse_name}`} />}
             </Stack>
           </>
         )}
