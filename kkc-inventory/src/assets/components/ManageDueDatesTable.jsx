@@ -8,11 +8,11 @@ import { MdAdd, MdDelete, MdEdit, MdVisibility } from "react-icons/md";
 import PayableDialog from "./PayableDialog";
 import { RetrieveWarehouse } from "../logics/admin/ManageWarehouse";
 import { InsertBills, RetrieveBills, UpdatePayables } from "../logics/bills/ManageBills";
-import TablePager from "../components/TablePager";
-import SearchBar from "../components/SearchBar";
-import SortableHeader, { getComparator, stableSort } from "../components/SortableHeader";
+import TablePager from "./TablePager";
+import SearchBar from "./SearchBar";
+import SortableHeader, { getComparator, stableSort } from "./SortableHeader";
 
-function ManagePayables({ setDataToExport }) {
+function ManageDueDatesTable({ setDataToExport }) {
     const [rows, setRows] = useState([]);
     const [loading, setLoading] = useState(false);
     const [search, setSearch] = useState("");
@@ -117,7 +117,7 @@ function ManagePayables({ setDataToExport }) {
         <Box sx={{ p: 2, fontFamily: "Poppins, sans-serif" }}>
             <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 3 }}>
                 <Typography variant="h4" sx={{ fontWeight: 700 }}>
-                    Manage Payables
+                    Due Dates (This Month)
                 </Typography>
                 <Button
                     variant="contained"
@@ -147,10 +147,10 @@ function ManagePayables({ setDataToExport }) {
                                         <TableRow>
                                             <SortableHeader id="no" label="No." order={order} orderBy={orderBy} onSort={handleSort} />
                                             <SortableHeader id="client_merchant" label="Client/Merchant" order={order} orderBy={orderBy} onSort={handleSort} />
-                                            <SortableHeader id="user" label="User" order={order} orderBy={orderBy} onSort={handleSort} />
-                                            <SortableHeader id="due_date" label="Due Date" order={order} orderBy={orderBy} onSort={handleSort} />
-                                            <SortableHeader id="company" label="Company" order={order} orderBy={orderBy} onSort={handleSort} />
-                                            <SortableHeader id="type_of_bill" label="Type of Bill" order={order} orderBy={orderBy} onSort={handleSort} />
+                                            <SortableHeader id="payment_status" label="Payment Status" order={order} orderBy={orderBy} onSort={handleSort} /> 
+                                            <SortableHeader id="payment_date" label="Payment Date" order={order} orderBy={orderBy} onSort={handleSort} /> 
+                                            <SortableHeader id="payment_mode" label="Mode of Payment" order={order} orderBy={orderBy} onSort={handleSort} /> 
+                                            <SortableHeader id="payment_status" label="Total Bill Amount" order={order} orderBy={orderBy} onSort={handleSort} /> 
                                             <SortableHeader id="action" label="Action" order={order} orderBy={orderBy} onSort={handleSort} />
                                         </TableRow>
                                     </TableHead>
@@ -176,7 +176,7 @@ function ManagePayables({ setDataToExport }) {
                                         ) : (
                                             pagedRows.map((row, index) => (
                                                 <TableRow key={row.id}>
-                                                    <TableCell>{index + 1}</TableCell>
+                                                    {/* <TableCell>{index + 1}</TableCell>
                                                     <TableCell>{row.client_merchant}</TableCell>
                                                     <TableCell>{row.user}</TableCell>
                                                     <TableCell>{row.due_date}</TableCell>
@@ -200,7 +200,7 @@ function ManagePayables({ setDataToExport }) {
                                                                 </IconButton>
                                                             </Tooltip>
                                                         </Stack>
-                                                    </TableCell>
+                                                    </TableCell> */}
                                                 </TableRow>
                                             ))
                                         )}
@@ -211,7 +211,7 @@ function ManagePayables({ setDataToExport }) {
                         )}
                     </TablePager>
                 </TableContainer>
-            </Paper>
+            </Paper> 
 
             <PayableDialog
                 open={openPayablesDialog}
@@ -225,4 +225,4 @@ function ManagePayables({ setDataToExport }) {
     );
 }
 
-export default ManagePayables;
+export default ManageDueDatesTable;

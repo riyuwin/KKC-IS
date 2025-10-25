@@ -1,5 +1,9 @@
 import React, { useEffect, useState } from "react";
-import { Dialog, DialogTitle, DialogContent, DialogActions, Button, TextField, Stack, FormControl, InputLabel, Select, MenuItem, } from "@mui/material";
+import {
+  Dialog, DialogTitle, DialogContent, DialogActions,
+  Button, TextField, Stack, FormControl, InputLabel,
+  Select, MenuItem
+} from "@mui/material";
 
 const Bill_Types = ["Receivables", "Payables"];
 const Bill_Status = ["Active", "Inactive"];
@@ -9,69 +13,62 @@ export default function PayableDialog({
   onClose,
   onSubmit,
   warehouses = [],
-  bill,
-  modal_type,
+  bill = null,
+  modal_type = "Add",
 }) {
   const [form, setForm] = useState({
-    client: "",
+    payables_id: "",
+    client_merchant: "",
     user: "",
     due_date: "",
     company: "",
-    type_bill: "",
+    type_of_bill: "",
     bill_status: "",
     warehouse_id: "",
   });
- 
+
+  // ✅ Populate form for Edit *and* View
   useEffect(() => {
-    if (modal_type === "Edit" && bill) {
+    if ((modal_type === "Edit" || modal_type === "View") && bill) {
       setForm({
-        client: bill.client || "",
+        payables_id: bill.payables_id || "",
+        client_merchant: bill.client_merchant || "",
         user: bill.user || "",
         due_date: bill.due_date || "",
         company: bill.company || "",
-        type_bill: bill.type_bill || "",
+        type_of_bill: bill.type_of_bill || "",
         bill_status: bill.bill_status || "",
         warehouse_id: bill.warehouse_id || "",
       });
-    } else if (modal_type === "Add") {
+    } else {
       setForm({
-        client: "",
+        payables_id: "",
+        client_merchant: "",
         user: "",
         due_date: "",
         company: "",
-        type_bill: "",
+        type_of_bill: "",
         bill_status: "",
         warehouse_id: "",
       });
     }
   }, [modal_type, bill]);
 
-  const handleChange = (e) =>
-    setForm({ ...form, [e.target.name]: e.target.value });
+  const handleChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
 
   const handleSave = () => {
     const payload = {
-      client: form.client.trim(),
+      ...form,
+      client_merchant: form.client_merchant.trim(),
       user: form.user.trim(),
-      due_date: form.due_date.trim(),
       company: form.company.trim(),
-      type_bill: form.type_bill,
-      bill_status: form.bill_status,
-      warehouse_id: form.warehouse_id,
     };
 
-    onSubmit(payload);
-
-    setForm({
-      client: "",
-      user: "",
-      due_date: "",
-      company: "",
-      type_bill: "",
-      bill_status: "",
-      warehouse_id: "",
-    });
+    onSubmit(payload, modal_type);
+    onClose();
   };
+
+  const isView = modal_type === "View";
 
   return (
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm">
@@ -79,22 +76,32 @@ export default function PayableDialog({
 
       <DialogContent dividers>
         <Stack spacing={2} sx={{ mt: 1 }}>
+          {(modal_type === "Edit" || modal_type === "View") && (
+            <TextField
+              label="Payables ID"
+              name="payables_id"
+              value={form.payables_id}
+              fullWidth
+              disabled
+            />
+          )}
+
           <TextField
             label="Client/Merchant"
-            name="client"
-            type="text"
-            value={form.client}
+            name="client_merchant"
+            value={form.client_merchant}
             onChange={handleChange}
             fullWidth
+            disabled={isView}
           />
 
           <TextField
             label="User"
             name="user"
-            type="text"
             value={form.user}
             onChange={handleChange}
             fullWidth
+            disabled={isView}
           />
 
           <TextField
@@ -105,42 +112,43 @@ export default function PayableDialog({
             onChange={handleChange}
             fullWidth
             InputLabelProps={{ shrink: true }}
+            disabled={isView}
           />
 
           <TextField
             label="Company"
             name="company"
-            type="text"
             value={form.company}
             onChange={handleChange}
             fullWidth
-          /> 
+            disabled={isView}
+          />
 
-          <FormControl fullWidth>
+          <FormControl fullWidth disabled={isView}>
             <InputLabel id="bill-status-label">Bill Status</InputLabel>
             <Select
               labelId="bill-status-label"
-              label="Bill Status"
               name="bill_status"
               value={form.bill_status}
               onChange={handleChange}
+              label="Bill Status"
             >
-              {Bill_Status.map((type) => (
-                <MenuItem key={type} value={type}>
-                  {type}
+              {Bill_Status.map((status) => (
+                <MenuItem key={status} value={status}>
+                  {status}
                 </MenuItem>
               ))}
             </Select>
           </FormControl>
 
-          <FormControl fullWidth>
+          <FormControl fullWidth disabled={isView}>
             <InputLabel id="type-bill-label">Type of Bill</InputLabel>
             <Select
               labelId="type-bill-label"
-              label="Type of Bill"
-              name="type_bill"
-              value={form.type_bill}
+              name="type_of_bill"
+              value={form.type_of_bill}
               onChange={handleChange}
+              label="Type of Bill"
             >
               {Bill_Types.map((type) => (
                 <MenuItem key={type} value={type}>
@@ -150,24 +158,21 @@ export default function PayableDialog({
             </Select>
           </FormControl>
 
-          <FormControl fullWidth>
+          <FormControl fullWidth disabled={isView}>
             <InputLabel id="wh-label">Assign to Warehouse</InputLabel>
             <Select
               labelId="wh-label"
-              label="Assign to Warehouse"
               name="warehouse_id"
               value={form.warehouse_id}
               onChange={handleChange}
+              label="Assign to Warehouse"
             >
               {warehouses.length === 0 ? (
-                <MenuItem value="">No warehouses yet</MenuItem>
+                <MenuItem value="">No warehouses available</MenuItem>
               ) : (
                 warehouses.map((w) => (
-                  <MenuItem
-                    key={w.warehouse_id || w.value}
-                    value={w.warehouse_id || w.value}
-                  >
-                    {w.warehouse_name || w.label}
+                  <MenuItem key={w.value} value={w.value}>
+                    {w.label}
                   </MenuItem>
                 ))
               )}
@@ -177,15 +182,17 @@ export default function PayableDialog({
       </DialogContent>
 
       <DialogActions>
-        <Button
-          onClick={handleSave}
-          variant="contained"
-          sx={{ bgcolor: "#FA8201", "&:hover": { bgcolor: "#E67600" } }}
-        >
-          Save
-        </Button>
+        {!isView && (
+          <Button
+            onClick={handleSave}
+            variant="contained"
+            sx={{ bgcolor: "#FA8201", "&:hover": { bgcolor: "#E67600" } }}
+          >
+            Save
+          </Button>
+        )}
         <Button onClick={onClose} variant="text">
-          Cancel
+          {isView ? "Close" : "Cancel"}
         </Button>
       </DialogActions>
     </Dialog>

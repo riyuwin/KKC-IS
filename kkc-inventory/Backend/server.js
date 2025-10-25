@@ -2002,9 +2002,9 @@ app.get('/dashboard/outstanding-deliveries', (req, res) => {
 
 // Warehouse ->>>>>>>>>>>>
 app.post("/bills", (req, res) => {
-    const { warehouse_id, client, user, due_date, company, type_bill, bill_status } = req.body;
+    const { warehouse_id, client_merchant, user, due_date, company, type_of_bill, bill_status } = req.body;
 
-    if (!warehouse_id || !client || !user || !due_date || !company || !type_bill || !bill_status) {
+    if (!warehouse_id || !client_merchant || !user || !due_date || !company || !type_of_bill || !bill_status) {
         return res.status(400).json({ error: "Missing fields." });
     }
 
@@ -2015,12 +2015,64 @@ app.post("/bills", (req, res) => {
 
     executeQuery(
         insertWarehouseQuery,
-        [warehouse_id, client, user, due_date, company, type_bill, bill_status],
+        [warehouse_id, client_merchant, user, due_date, company, type_of_bill, bill_status],
         res,
         "payables added successfully"
     );
 });
 
+app.get("/bills", (req, res) => {
+    const query = `
+        SELECT a.*, w.*
+        FROM payables a
+        INNER JOIN warehouse w ON a.warehouse_id = w.warehouse_id
+    `;
+
+    db.query(query, (err, results) => {
+        if (err) return res.status(500).json({ error: err });
+        res.json(results);
+    });
+});
+
+app.put("/bills/:payables_id", (req, res) => {
+    const { payables_id } = req.params;
+    const {
+        client_merchant,
+        user,
+        due_date,
+        company,
+        type_of_bill,
+        bill_status,
+        warehouse_id,
+    } = req.body;
+
+    console.log("Updating bill with payables_id:", payables_id);
+
+    const query = `
+        UPDATE payables 
+        SET 
+            client_merchant = ?, 
+            user = ?, 
+            due_date = ?, 
+            company = ?, 
+            type_of_bill = ?, 
+            bill_status = ?, 
+            warehouse_id = ?, 
+            updated_at = NOW()
+        WHERE payables_id = ?
+    `;
+
+    db.query(
+        query,
+        [client_merchant, user, due_date, company, type_of_bill, bill_status, warehouse_id, payables_id],
+        (err, result) => {
+            if (err) return res.status(500).json({ error: err });
+            if (result.affectedRows === 0)
+                return res.status(404).json({ message: "Bill not found" });
+            res.json({ message: "Bill updated successfully" });
+        }
+    );
+});
 
 
 app.listen(process.env.PORT, () => console.log(`Server running on port ${process.env.PORT}`));

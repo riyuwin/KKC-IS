@@ -9,6 +9,7 @@ import ProductReportTable from "../components/ProductReportTable";
 import StockFilter from "../components/StockFilter";
 import OutstandingDeliveriesTable from "../components/OutstandingDeliveriesTable";
 import ManagePayables from "../components/ManagePayablesTable";
+import ManageDueDatesTable from "../components/ManageDueDatesTable";
 
 // A11y Helpers for Tabs
 function a11yProps(index) {
@@ -72,6 +73,10 @@ function Bills() {
                 setDataToExport={setDataToExport}
               /> */}
               
+              <ManageDueDatesTable
+                stockStatus={null}
+                setDataToExport={null} 
+              />
 
             </Box>
           </>
