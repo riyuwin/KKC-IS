@@ -80,3 +80,47 @@ export async function UpdatePayables(payload) {
         });
     }
 }   
+
+
+export async function DeleteBills(payables_id) {
+    try { 
+        const result = await Swal.fire({
+            title: "Are you sure?",
+            text: "This action will permanently delete the bill record.",
+            icon: "warning",
+            showCancelButton: true,
+            confirmButtonColor: "#d33",
+            cancelButtonColor: "#3085d6",
+            confirmButtonText: "Yes, delete it!",
+            cancelButtonText: "Cancel",
+        });
+ 
+        if (!result.isConfirmed) return;
+ 
+        const response = await fetch(`${PortBills}/${payables_id}`, {
+            method: "DELETE",
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(data.error || data.message || "Bill deletion failed.");
+        }
+ 
+        console.log("Bill deleted successfully!", data);
+
+        Swal.fire({
+            icon: "success",
+            title: "Deleted!",
+            text: "The bill has been successfully deleted.",
+        });
+
+    } catch (err) {
+        console.error("Error deleting bill:", err.message);
+        Swal.fire({
+            icon: "error",
+            title: "Deletion Failed",
+            text: err.message,
+        });
+    }
+}

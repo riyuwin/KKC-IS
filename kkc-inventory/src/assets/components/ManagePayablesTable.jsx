@@ -7,7 +7,7 @@ import {
 import { MdAdd, MdDelete, MdEdit, MdVisibility } from "react-icons/md";
 import PayableDialog from "./PayableDialog";
 import { RetrieveWarehouse } from "../logics/admin/ManageWarehouse";
-import { InsertBills, RetrieveBills, UpdatePayables } from "../logics/bills/ManageBills";
+import { DeleteBills, InsertBills, RetrieveBills, UpdatePayables } from "../logics/bills/ManageBills";
 import TablePager from "../components/TablePager";
 import SearchBar from "../components/SearchBar";
 import SortableHeader, { getComparator, stableSort } from "../components/SortableHeader";
@@ -113,6 +113,12 @@ function ManagePayables({ setDataToExport }) {
     };
     const bodyCellSx = { textAlign: "center", fontSize: "0.90rem", py: 2, px: 1 };
 
+    const handleDeleteBill = async (payables_id) => {
+        console.log("TEST: " + payables_id);
+        await DeleteBills(payables_id);
+        await loadBills();  
+    };
+
     return (
         <Box sx={{ p: 2, fontFamily: "Poppins, sans-serif" }}>
             <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 3 }}>
@@ -148,9 +154,10 @@ function ManagePayables({ setDataToExport }) {
                                             <SortableHeader id="no" label="No." order={order} orderBy={orderBy} onSort={handleSort} />
                                             <SortableHeader id="client_merchant" label="Client/Merchant" order={order} orderBy={orderBy} onSort={handleSort} />
                                             <SortableHeader id="user" label="User" order={order} orderBy={orderBy} onSort={handleSort} />
-                                            <SortableHeader id="due_date" label="Due Date" order={order} orderBy={orderBy} onSort={handleSort} />
+                                            <SortableHeader id="due_date" label="Due Date (Day in Month)" order={order} orderBy={orderBy} onSort={handleSort} />
                                             <SortableHeader id="company" label="Company" order={order} orderBy={orderBy} onSort={handleSort} />
                                             <SortableHeader id="type_of_bill" label="Type of Bill" order={order} orderBy={orderBy} onSort={handleSort} />
+                                            <SortableHeader id="bill_status" label="Bill Status" order={order} orderBy={orderBy} onSort={handleSort} />
                                             <SortableHeader id="action" label="Action" order={order} orderBy={orderBy} onSort={handleSort} />
                                         </TableRow>
                                     </TableHead>
@@ -182,6 +189,7 @@ function ManagePayables({ setDataToExport }) {
                                                     <TableCell>{row.due_date}</TableCell>
                                                     <TableCell>{row.company}</TableCell>
                                                     <TableCell>{row.type_of_bill}</TableCell>
+                                                    <TableCell>{row.bill_status}</TableCell>
                                                     <TableCell>
                                                         <Stack direction="row" justifyContent="center" spacing={0.5}>
                                                             <Tooltip title="View">
@@ -195,7 +203,7 @@ function ManagePayables({ setDataToExport }) {
                                                                 </IconButton>
                                                             </Tooltip>
                                                             <Tooltip title="Delete">
-                                                                <IconButton size="small" color="error" onClick={() => handleDialogOpen("Delete", row)}>
+                                                                <IconButton size="small" color="error" onClick={() => handleDeleteBill(row.payables_id)}>
                                                                     <MdDelete style={{ fontSize: 22 }} />
                                                                 </IconButton>
                                                             </Tooltip>

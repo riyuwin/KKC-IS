@@ -425,45 +425,45 @@ app.get('/products', (req, res) => {
 
 // POST /products
 app.post('/products', async (req, res) => {
-  try {
-    let { sku, product_name, description, unit, stock, supplier_id, cost_price, selling_price, warehouse_id } = req.body;
+    try {
+        let { sku, product_name, description, unit, stock, supplier_id, cost_price, selling_price, warehouse_id } = req.body;
 
-    if (!product_name) return res.status(400).json({ error: 'product_name is required' });
+        if (!product_name) return res.status(400).json({ error: 'product_name is required' });
 
-    stock = parseInt(stock ?? 0, 10) || 0;
-    cost_price = parseFloat(cost_price ?? 0) || 0;
-    selling_price = parseFloat(selling_price ?? 0) || 0;
+        stock = parseInt(stock ?? 0, 10) || 0;
+        cost_price = parseFloat(cost_price ?? 0) || 0;
+        selling_price = parseFloat(selling_price ?? 0) || 0;
 
-    if (!sku) sku = await generateUniqueSku(db);
-    const stock_status = computeStockStatus(stock);
+        if (!sku) sku = await generateUniqueSku(db);
+        const stock_status = computeStockStatus(stock);
 
-    const role = req.session?.user?.role || 'warehouse';
-    const isAdmin = String(role).toLowerCase() === 'admin';
+        const role = req.session?.user?.role || 'warehouse';
+        const isAdmin = String(role).toLowerCase() === 'admin';
 
-    function resolveWarehouseId(cb) {
-      if (!isAdmin) return getSessionWarehouseId(req, cb);
-      if (warehouse_id) return cb(null, Number(warehouse_id));
-      getSessionWarehouseId(req, (e, wid) => cb(e, wid || null));
-    }
+        function resolveWarehouseId(cb) {
+            if (!isAdmin) return getSessionWarehouseId(req, cb);
+            if (warehouse_id) return cb(null, Number(warehouse_id));
+            getSessionWarehouseId(req, (e, wid) => cb(e, wid || null));
+        }
 
-    resolveWarehouseId((eW, wid) => {
-      if (eW) return res.status(500).json({ error: eW.message });
-      if (!wid) return res.status(400).json({ error: 'warehouse_id is required' });
+        resolveWarehouseId((eW, wid) => {
+            if (eW) return res.status(500).json({ error: eW.message });
+            if (!wid) return res.status(400).json({ error: 'warehouse_id is required' });
 
-      const sql = `
+            const sql = `
         INSERT INTO products (warehouse_id, sku, product_name, description, unit, stock, supplier_id, cost_price, selling_price, stock_status)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `;
-      const params = [wid, sku, product_name, description || null, unit || null, stock, supplier_id || null, cost_price, selling_price, stock_status];
+            const params = [wid, sku, product_name, description || null, unit || null, stock, supplier_id || null, cost_price, selling_price, stock_status];
 
-      db.query(sql, params, (err, result) => {
-        if (err) return res.status(500).json({ error: err.message });
-        res.json({ message: 'Product created', product_id: result.insertId, sku, stock_status, warehouse_id: wid });
-      });
-    });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
+            db.query(sql, params, (err, result) => {
+                if (err) return res.status(500).json({ error: err.message });
+                res.json({ message: 'Product created', product_id: result.insertId, sku, stock_status, warehouse_id: wid });
+            });
+        });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
 });
 
 
@@ -2073,6 +2073,237 @@ app.put("/bills/:payables_id", (req, res) => {
         }
     );
 });
+
+app.delete("/bills/:payables_id", (req, res) => {
+    const { payables_id } = req.params;
+
+    console.log("Deleting bill with payables_id:", payables_id);
+
+    const deleteQuery = "DELETE FROM payables WHERE payables_id = ?";
+
+    db.query(deleteQuery, [payables_id], (err, result) => {
+        if (err) {
+            console.error("Error deleting bill:", err);
+            return res.status(500).json({ error: err });
+        }
+
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ message: "Bill not found" });
+        }
+
+        res.json({ message: "Bill deleted successfully" });
+    });
+});
+
+
+/* app.get("/due_dates", (req, res) => {
+    const currentMonth = new Date().getMonth() + 1;
+    const currentYear = new Date().getFullYear();
+
+    const selectPayables = `
+        SELECT a.*, w.warehouse_name, w.warehouse_id
+        FROM payables a
+        INNER JOIN warehouse w ON a.warehouse_id = w.warehouse_id
+        WHERE a.bill_status = 'Active'
+    `;
+
+    db.query(selectPayables, (err, payables) => {
+        if (err) return res.status(500).json({ error: err });
+        if (!payables.length) return res.json([]);
+
+        const checkQuery = `
+            SELECT payables_id 
+            FROM due_dates 
+            WHERE month = ? AND year = ?
+        `;
+
+        db.query(checkQuery, [currentMonth, currentYear], (err, existingDueDates) => {
+            if (err) return res.status(500).json({ error: err });
+
+            const existingIds = existingDueDates.map(row => row.payables_id);
+
+            const missingDueDates = payables.filter(
+                (p) => !existingIds.includes(p.payables_id)
+            );
+
+            if (missingDueDates.length === 0) {
+                return res.json(payables);
+            }
+
+            // Build raw VALUES string using NOW()
+            const values = missingDueDates
+                .map((p) => `(
+                    ${p.payables_id},
+                    ${currentMonth},
+                    ${currentYear},
+                    'Pending',
+                    '',
+                    'None',
+                    0,
+                    NOW(),
+                    NOW()
+                )`)
+                .join(",");
+
+            const insertQuery = `
+                INSERT INTO due_dates (
+                    payables_id,
+                    month,
+                    year,
+                    payment_status,
+                    payment_date,
+                    payment_mode,
+                    total_bill_amount,
+                    updated_at,
+                    added_at
+                )
+                VALUES ${values}
+            `;
+
+            db.query(insertQuery, (err2) => {
+                if (err2) return res.status(500).json({ error: err2 });
+
+                console.log(`Inserted ${missingDueDates.length} new due_date records`);
+                res.json(payables);
+            });
+        });
+    });
+}); */
+
+app.get("/due_dates", (req, res) => {
+    const selectPayables = `
+      SELECT a.*, w.warehouse_name, w.warehouse_id
+      FROM payables a
+      INNER JOIN warehouse w ON a.warehouse_id = w.warehouse_id
+      WHERE a.bill_status = 'Active'
+  `;
+
+    db.query(selectPayables, (err, payables) => {
+        if (err) return res.status(500).json({ error: err });
+        if (!payables.length) return res.json([]);
+
+        const checkQuery = `
+        SELECT payables_id, month, year
+        FROM due_dates
+    `;
+
+        db.query(checkQuery, (err, existingDueDates) => {
+            if (err) return res.status(500).json({ error: err });
+
+            const existingIds = existingDueDates.map((row) => row.payables_id);
+
+            const missingDueDates = payables.filter(
+                (p) => !existingIds.includes(p.payables_id)
+            );
+ 
+            if (missingDueDates.length === 0) {
+                const finalQuery = `
+          SELECT 
+            p.*, 
+            w.warehouse_name, w.warehouse_id,
+            d.due_date_id, d.month, d.year,
+            d.payment_status, d.payment_date, 
+            d.payment_mode, d.total_bill_amount, 
+            d.updated_at, d.added_at
+          FROM payables p
+          INNER JOIN warehouse w ON p.warehouse_id = w.warehouse_id
+          INNER JOIN due_dates d ON p.payables_id = d.payables_id
+        `;
+                db.query(finalQuery, (err3, combined) => {
+                    if (err3) return res.status(500).json({ error: err3 });
+                    return res.json(combined);
+                });
+                return;
+            }
+
+            const now = new Date();
+            const currentMonth = now.getMonth() + 1;
+            const currentYear = now.getFullYear();
+
+            const values = missingDueDates
+                .map(
+                    (p) => `(
+            ${p.payables_id},
+            ${currentMonth},
+            ${currentYear},
+            'Pending',
+            ${p.due_date},   
+            0,
+            'None',
+            0,
+            NOW(),
+            NOW()
+          )`
+                )
+                .join(",");
+
+            const insertQuery = `
+          INSERT INTO due_dates (
+              payables_id,
+              month,
+              year,
+              payment_status,
+              due_date,
+              payment_date,
+              payment_mode,
+              total_bill_amount,
+              updated_at,
+              added_at
+          )
+          VALUES ${values}
+      `;
+
+            db.query(insertQuery, (err2) => {
+                if (err2) return res.status(500).json({ error: err2 });
+
+                console.log(`Inserted ${missingDueDates.length} new due_date records`);
+
+                const finalQuery = `
+          SELECT 
+            p.*, 
+            w.warehouse_name, w.warehouse_id,
+            d.due_date_id, d.month, d.year,
+            d.payment_status, d.payment_date, 
+            d.payment_mode, d.total_bill_amount, 
+            d.updated_at, d.added_at
+          FROM payables p
+          INNER JOIN warehouse w ON p.warehouse_id = w.warehouse_id
+          INNER JOIN due_dates d ON p.payables_id = d.payables_id
+        `;
+
+                db.query(finalQuery, (err3, combined) => {
+                    if (err3) return res.status(500).json({ error: err3 });
+                    res.json(combined);
+                });
+            });
+        });
+    });
+});
+
+app.put("/due_dates/:due_date_id", (req, res) => {
+  const { due_date_id } = req.params;
+  const { payment_status, payment_date, payment_mode, total_bill_amount } = req.body; 
+
+  const updateQuery = `
+    UPDATE due_dates 
+    SET  
+      payment_status = COALESCE(?, payment_status),
+      payment_date = COALESCE(?, payment_date),
+      payment_mode = COALESCE(?, payment_mode),
+      total_bill_amount = COALESCE(?, total_bill_amount),
+      updated_at = NOW()
+    WHERE due_date_id = ?
+  `;
+
+  db.query(updateQuery, [payment_status, payment_date, payment_mode, total_bill_amount, due_date_id], (err, result) => {
+    if (err) return res.status(500).json({ error: err });
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ message: "Due date not found" });
+    }
+    res.json({ message: "Due date updated successfully" });
+  });
+});
+
 
 
 app.listen(process.env.PORT, () => console.log(`Server running on port ${process.env.PORT}`));

@@ -7,6 +7,7 @@ import {
 
 const Bill_Types = ["Receivables", "Payables"];
 const Bill_Status = ["Active", "Inactive"];
+const Due_Date_Options = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32];
 
 export default function PayableDialog({
   open,
@@ -27,11 +28,10 @@ export default function PayableDialog({
     warehouse_id: "",
   });
 
-  // ✅ Populate form for Edit *and* View
   useEffect(() => {
     if ((modal_type === "Edit" || modal_type === "View") && bill) {
       setForm({
-        payables_id: bill.payables_id || "",
+        payables_id: bill.payables_id || bill.id || "",
         client_merchant: bill.client_merchant || "",
         user: bill.user || "",
         due_date: bill.due_date || "",
@@ -53,6 +53,7 @@ export default function PayableDialog({
       });
     }
   }, [modal_type, bill]);
+
 
   const handleChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
 
@@ -104,16 +105,23 @@ export default function PayableDialog({
             disabled={isView}
           />
 
-          <TextField
-            label="Due Date"
-            name="due_date"
-            type="date"
-            value={form.due_date}
-            onChange={handleChange}
-            fullWidth
-            InputLabelProps={{ shrink: true }}
-            disabled={isView}
-          />
+          {/* 🔹 Replaced Due Date with a Frequency Selector */}
+          <FormControl fullWidth disabled={isView}>
+            <InputLabel id="due-date-label">Due Date (Day in Month)</InputLabel>
+            <Select
+              labelId="due-date-label"
+              name="due_date"
+              value={form.due_date}
+              onChange={handleChange}
+              label="Due Date Frequency"
+            >
+              {Due_Date_Options.map((option) => (
+                <MenuItem key={option} value={option}>
+                  {option}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
 
           <TextField
             label="Company"

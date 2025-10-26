@@ -152,7 +152,7 @@ export default function DurationFilter({ duration, onDurationChange, sx, dataToE
     const buffer = await workbook.xlsx.writeBuffer();
     saveAs(
       new Blob([buffer]),
-      tab === 1 ? "Sales Report.xlsx" : "Purchase Report.xlsx"
+      tab === 1 ? "KKC Inventory System - Sales Report.xlsx" : "KKC Inventory System - Purchase Report.xlsx"
     );
   };
 

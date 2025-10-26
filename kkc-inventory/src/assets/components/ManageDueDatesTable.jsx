@@ -1,16 +1,15 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
     Box, Paper, Typography, Table, TableBody, TableCell, TableContainer,
-    TableHead, TableRow, CircularProgress, Stack, Button,
-    Tooltip, IconButton
+    TableHead, TableRow, CircularProgress, Stack, Tooltip, IconButton
 } from "@mui/material";
-import { MdAdd, MdDelete, MdEdit, MdVisibility } from "react-icons/md";
-import PayableDialog from "./PayableDialog";
-import { RetrieveWarehouse } from "../logics/admin/ManageWarehouse";
-import { InsertBills, RetrieveBills, UpdatePayables } from "../logics/bills/ManageBills";
+import { MdDelete, MdEdit, MdVisibility } from "react-icons/md";
 import TablePager from "./TablePager";
 import SearchBar from "./SearchBar";
 import SortableHeader, { getComparator, stableSort } from "./SortableHeader";
+import DueDatesDialog from "./DueDatesDialog";
+import { CheckDueDatesRecord, UpdateDueDates } from "../logics/bills/ManageDueDates";
+import Swal from "sweetalert2";
 
 function ManageDueDatesTable({ setDataToExport }) {
     const [rows, setRows] = useState([]);
@@ -19,92 +18,73 @@ function ManageDueDatesTable({ setDataToExport }) {
     const [searchNow, setSearchNow] = useState("");
     const [order, setOrder] = useState("asc");
     const [orderBy, setOrderBy] = useState("client_merchant");
-    const [openPayablesDialog, setOpenPayablesDialog] = useState(false);
+    const [openDialog, setOpenDialog] = useState(false);
     const [modalType, setModalType] = useState(null);
-    const [warehouses, setWarehouses] = useState([]);
     const [selectedBill, setSelectedBill] = useState(null);
 
-    // Convert warehouse list to dropdown options
-    const warehouseNames = useMemo(
-        () => warehouses.map((w) => ({ label: w.warehouse_name, value: w.warehouse_id })),
-        [warehouses]
-    );
-
-    // Unified dialog handler for Add / Edit / View / Delete
-    const handleDialogOpen = (type, bill = null) => {
-        setModalType(type);
-        setSelectedBill(bill);
-        setOpenPayablesDialog(true);
-        console.log(`Dialog opened: ${type}`, bill);
-    };
-
-    // Fetch warehouses
-    useEffect(() => {
-        const fetchWarehouses = async () => {
-            const { data } = await RetrieveWarehouse();
-            setWarehouses(data);
-        };
-        fetchWarehouses();
-    }, []);
-
-    // Debounce search input
-    useEffect(() => {
-        const t = setTimeout(() => setSearchNow(search), 150);
-        return () => clearTimeout(t);
-    }, [search]);
-
-    // Load bills
-    const loadBills = async () => {
+    // === Fetch due dates on mount ===
+    const fetchDueDates = async () => {
         setLoading(true);
         try {
-            const { data } = await RetrieveBills();
-            const result = Array.isArray(data) ? data : [];
-
-            // Filter by search
-            const filtered = result.filter(bill =>
-                bill.client_merchant?.toLowerCase().includes(searchNow.toLowerCase()) ||
-                bill.company?.toLowerCase().includes(searchNow.toLowerCase())
-            );
-
-            setRows(filtered);
-            if (setDataToExport) setDataToExport(filtered);
+            const { data } = await CheckDueDatesRecord();
+            setRows(Array.isArray(data) ? data : []);
+            if (setDataToExport) setDataToExport(data);
         } catch (err) {
-            console.error("Error loading bills:", err);
+            console.error("Error fetching due dates:", err);
         } finally {
             setLoading(false);
         }
     };
 
-    useEffect(() => { loadBills(); }, [searchNow]);
+    useEffect(() => {
+        fetchDueDates();
+    }, []);
 
-    // Sorting
+    // === Debounce search input ===
+    useEffect(() => {
+        const t = setTimeout(() => setSearchNow(search), 150);
+        return () => clearTimeout(t);
+    }, [search]);
+
+    // === Filter rows based on search ===
+    const filteredRows = useMemo(() => {
+        return rows.filter(bill =>
+            (bill.client_merchant || "").toLowerCase().includes(searchNow.toLowerCase()) ||
+            (bill.company || "").toLowerCase().includes(searchNow.toLowerCase())
+        );
+    }, [rows, searchNow]);
+
+    // === Sorting ===
     const sortedRows = useMemo(
-        () => stableSort(rows, getComparator(order, orderBy)),
-        [rows, order, orderBy]
+        () => stableSort(filteredRows, getComparator(order, orderBy)),
+        [filteredRows, order, orderBy]
     );
-
     const handleSort = (property) => {
         const isAsc = orderBy === property && order === "asc";
         setOrder(isAsc ? "desc" : "asc");
         setOrderBy(property);
     };
 
-    // Add / Edit handler
-    const handleManagePayables = async (payload, modal_type) => {
-        try {
-            console.log("Submitted payload:", payload);
-            console.log("Modal type:", modal_type);
+    // === Dialog handler ===
+    const handleDialogOpen = (type, bill = null) => {
+        setModalType(type);
+        setSelectedBill(bill);
+        setOpenDialog(true);
+        console.log(`Dialog opened: ${type}`, bill);
+    };
 
-            if (modal_type === "Add") {
-                await InsertBills(payload);
-            } else if (modal_type === "Edit") {
-                await UpdatePayables(payload);
-            }
-
-            await loadBills();
-        } catch (err) {
-            console.error(`Error in ${modal_type}:`, err);
-        }
+    // === Update Handler (for edit mode) ===
+    const handleUpdateDueDate = async (updatedBill) => {
+        console.log("Submitted edit data:", updatedBill);
+        await UpdateDueDates({
+            due_date_id: updatedBill.due_date_id,
+            payment_status: updatedBill.payment_status || null,
+            payment_date: updatedBill.payment_date,
+            payment_mode: updatedBill.payment_mode || null,
+            total_bill_amount: updatedBill.total_bill_amount || null,
+        });
+        setOpenDialog(false);
+        fetchDueDates();
     };
 
     const headerCellSx = {
@@ -119,20 +99,6 @@ function ManageDueDatesTable({ setDataToExport }) {
                 <Typography variant="h4" sx={{ fontWeight: 700 }}>
                     Due Dates (This Month)
                 </Typography>
-                <Button
-                    variant="contained"
-                    startIcon={<MdAdd />}
-                    sx={{
-                        bgcolor: "#E67600",
-                        "&:hover": { bgcolor: "#f99f3fff" },
-                        textTransform: "none",
-                        fontWeight: 600,
-                        borderRadius: 2
-                    }}
-                    onClick={() => handleDialogOpen("Add")}
-                >
-                    Add Payables
-                </Button>
             </Stack>
 
             <SearchBar search={search} onSearchChange={setSearch} />
@@ -147,10 +113,10 @@ function ManageDueDatesTable({ setDataToExport }) {
                                         <TableRow>
                                             <SortableHeader id="no" label="No." order={order} orderBy={orderBy} onSort={handleSort} />
                                             <SortableHeader id="client_merchant" label="Client/Merchant" order={order} orderBy={orderBy} onSort={handleSort} />
-                                            <SortableHeader id="payment_status" label="Payment Status" order={order} orderBy={orderBy} onSort={handleSort} /> 
-                                            <SortableHeader id="payment_date" label="Payment Date" order={order} orderBy={orderBy} onSort={handleSort} /> 
-                                            <SortableHeader id="payment_mode" label="Mode of Payment" order={order} orderBy={orderBy} onSort={handleSort} /> 
-                                            <SortableHeader id="payment_status" label="Total Bill Amount" order={order} orderBy={orderBy} onSort={handleSort} /> 
+                                            <SortableHeader id="company" label="Company" order={order} orderBy={orderBy} onSort={handleSort} />
+                                            <SortableHeader id="type_of_bill" label="Type of Bill" order={order} orderBy={orderBy} onSort={handleSort} />
+                                            <SortableHeader id="payment_status" label="Payment Status" order={order} orderBy={orderBy} onSort={handleSort} />
+                                            <SortableHeader id="payment_date" label="Payment Date" order={order} orderBy={orderBy} onSort={handleSort} />
                                             <SortableHeader id="action" label="Action" order={order} orderBy={orderBy} onSort={handleSort} />
                                         </TableRow>
                                     </TableHead>
@@ -169,19 +135,45 @@ function ManageDueDatesTable({ setDataToExport }) {
                                             <TableRow>
                                                 <TableCell colSpan={7} align="center">
                                                     <Typography variant="body2" color="text.secondary" py={2}>
-                                                        No bills found.
+                                                        No due dates found.
                                                     </Typography>
                                                 </TableCell>
                                             </TableRow>
                                         ) : (
                                             pagedRows.map((row, index) => (
-                                                <TableRow key={row.id}>
-                                                    {/* <TableCell>{index + 1}</TableCell>
+                                                <TableRow key={row.due_date_id || index}>
+                                                    <TableCell>{index + 1}</TableCell>
                                                     <TableCell>{row.client_merchant}</TableCell>
-                                                    <TableCell>{row.user}</TableCell>
-                                                    <TableCell>{row.due_date}</TableCell>
                                                     <TableCell>{row.company}</TableCell>
                                                     <TableCell>{row.type_of_bill}</TableCell>
+                                                    <TableCell>
+                                                        <span
+                                                            style={{
+                                                                color:
+                                                                    row.payment_status === "Paid"
+                                                                        ? "green"
+                                                                        : row.payment_status === "Pending"
+                                                                            ? "orange"
+                                                                            : row.payment_status === "Overdue"
+                                                                                ? "red"
+                                                                                : "gray",
+                                                                fontWeight: "bold",
+                                                            }}
+                                                        >
+                                                            {row.payment_status || "Unknown"}
+                                                        </span>
+                                                    </TableCell>
+
+                                                    <TableCell>
+                                                        {row.payment_date && !isNaN(new Date(row.payment_date))
+                                                            ? new Date(row.payment_date).toLocaleDateString("en-US", {
+                                                                year: "numeric",
+                                                                month: "long",
+                                                                day: "numeric",
+                                                            })
+                                                            : "No Payment Yet"}
+                                                    </TableCell>
+
                                                     <TableCell>
                                                         <Stack direction="row" justifyContent="center" spacing={0.5}>
                                                             <Tooltip title="View">
@@ -194,13 +186,13 @@ function ManageDueDatesTable({ setDataToExport }) {
                                                                     <MdEdit style={{ fontSize: 22 }} />
                                                                 </IconButton>
                                                             </Tooltip>
-                                                            <Tooltip title="Delete">
+                                                            {/* <Tooltip title="Delete">
                                                                 <IconButton size="small" color="error" onClick={() => handleDialogOpen("Delete", row)}>
                                                                     <MdDelete style={{ fontSize: 22 }} />
                                                                 </IconButton>
-                                                            </Tooltip>
+                                                            </Tooltip> */}
                                                         </Stack>
-                                                    </TableCell> */}
+                                                    </TableCell>
                                                 </TableRow>
                                             ))
                                         )}
@@ -211,13 +203,13 @@ function ManageDueDatesTable({ setDataToExport }) {
                         )}
                     </TablePager>
                 </TableContainer>
-            </Paper> 
+            </Paper>
 
-            <PayableDialog
-                open={openPayablesDialog}
-                onClose={() => setOpenPayablesDialog(false)}
-                warehouses={warehouseNames}
-                onSubmit={handleManagePayables}
+            {/* === Edit / View / Delete Dialog === */}
+            <DueDatesDialog
+                open={openDialog}
+                onClose={() => setOpenDialog(false)}
+                onSubmit={handleUpdateDueDate}
                 modal_type={modalType}
                 bill={selectedBill}
             />
