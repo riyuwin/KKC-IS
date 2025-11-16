@@ -17,6 +17,7 @@ import Bills from "./assets/pages/Bills";
 import Accounts from "./assets/pages/Accounts";
 import Login from "./assets/pages/Login";
 import CreatePurchase from "./assets/pages/CreatePurchase";
+import CreateProduct from "./assets/pages/CreateProducts";
 
 const ACCOUNT_TYPE = "admin";
 const DRAWER_WIDTH = 260;
@@ -68,6 +69,7 @@ function AppShell() {
           <Route path="/bills" element={<Bills />} />
           <Route path="/accounts" element={<Accounts />} />
           <Route path="/purchases/new" element={<CreatePurchase />} />
+          <Route path="/products/new" element={<CreateProduct />} />
         </Routes>
       </Box>
     </Box>

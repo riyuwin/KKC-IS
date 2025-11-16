@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Box, Paper, Typography, Button, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, IconButton, CircularProgress, Tooltip, Chip, Stack, TextField, MenuItem } from "@mui/material";
 import { MdAdd, MdVisibility, MdEdit, MdDelete } from "react-icons/md";
+import { Link } from "react-router-dom";
+
 import ProductsCRUD from "../logics/products/ProductsCRUD";
 import ProductDialog from "../components/ProductDialog";
 import SortableHeader, { getComparator, stableSort } from "../components/SortableHeader";
@@ -40,7 +42,6 @@ function makeEmptyForm() {
   };
 }
 
-
 function Products() {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -50,11 +51,11 @@ function Products() {
 
   // session & warehouse filter (admin only)
   const [role, setRole] = useState(""); // "admin" | "warehouse"
-  const [warehouses, setWarehouses] = useState([]); // [{warehouse_id, warehouse_name}]
-  const [selectedWarehouse, setSelectedWarehouse] = useState("all"); // admin default: all
+  const [warehouses, setWarehouses] = useState([]);
+  const [selectedWarehouse, setSelectedWarehouse] = useState("all");
 
   const [open, setOpen] = useState(false);
-  const [dialogMode, setDialogMode] = useState("create");
+  const [dialogMode, setDialogMode] = useState("view");
   const [form, setForm] = useState(makeEmptyForm);
   const [selectedId, setSelectedId] = useState(null);
 
@@ -93,6 +94,7 @@ function Products() {
           );
         }
       } catch {
+        // ignore
       }
     })();
   }, []);
@@ -100,7 +102,7 @@ function Products() {
   const load = async () => {
     setLoading(true);
     try {
-      const warehouseId = role === "admin" ? selectedWarehouse : null; 
+      const warehouseId = role === "admin" ? selectedWarehouse : null;
       const data = await ProductsCRUD.fetchProducts(searchNow, warehouseId);
       setRows(Array.isArray(data) ? data : data?.results || []);
     } finally {
@@ -131,18 +133,10 @@ function Products() {
     [computedRows, order, orderBy]
   );
 
-
   const closeDialog = () => {
     setOpen(false);
     setSelectedId(null);
     setForm(makeEmptyForm());
-  };
-
-  const openCreate = () => {
-    setDialogMode("create");
-    setForm(makeEmptyForm());
-    setSelectedId(null);
-    setOpen(true);
   };
 
   const openView = (row) => {
@@ -190,7 +184,6 @@ function Products() {
     if (!res?.cancelled) await load();
   };
 
-
   const headerCellSx = {
     p: 1.5,
     fontSize: "0.95rem",
@@ -218,7 +211,6 @@ function Products() {
     px: 1.25,
   };
 
-
   return (
     <Box sx={{ p: 2, fontFamily: "Poppins, sans-serif" }}>
       <Typography variant="h3" sx={{ fontWeight: 700, mb: 5 }}>
@@ -239,7 +231,6 @@ function Products() {
         />
 
         <Stack direction="row" spacing={2} alignItems="center">
-          {/* Admin-only warehouse filter */}
           {role === "admin" && (
             <TextField
               select
@@ -259,9 +250,10 @@ function Products() {
           )}
 
           <Button
+            component={Link}
+            to="/products/new"
             variant="contained"
             startIcon={<MdAdd />}
-            onClick={openCreate}
             sx={{
               bgcolor: "#E67600",
               "&:hover": { bgcolor: "#f99f3fff" },
@@ -472,7 +464,7 @@ function Products() {
             closeDialog();
             await load();
           } catch {
-
+            // error dialogs handled inside CRUD
           }
         }}
       />
