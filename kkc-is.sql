@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Generation Time: Nov 16, 2025 at 03:42 PM
+-- Generation Time: Nov 18, 2025 at 04:41 PM
 -- Server version: 10.4.32-MariaDB
 -- PHP Version: 8.0.30
 
@@ -200,9 +200,9 @@ INSERT INTO `products` (`product_id`, `warehouse_id`, `sku`, `product_name`, `de
 (16, 0, '1000000004', 'LED Bulb 9W', 'Warm white', 'pc', 156, 2, 45.00, 80.00, 'In Stock', '2025-08-30 14:44:08', '2025-10-05 12:32:13'),
 (18, 0, '9783809638', 'AAAAA', 'ELO', 'pcs', 17, 1, 120.00, 130.00, 'In Stock', '2025-08-30 15:07:24', '2025-10-04 11:39:19'),
 (19, 0, '8599093265', 'XX', 'XXXX', 'PCS', 3, 2, 123.00, 125.00, 'Low Stock', '2025-10-04 14:45:51', '2025-10-05 11:54:30'),
-(20, 1, '1799953274', 'HELLO', 'SDAS', 'PCS', 2, 3, 100.00, 150.00, 'Low Stock', '2025-11-16 06:45:30', '2025-11-16 06:45:30'),
-(21, 1, '9229941899', 'AAAAAACCC', 'aaa', 'pcs', 12, 2, 120.00, 130.00, 'In Stock', '2025-11-16 13:13:31', '2025-11-16 13:17:25'),
-(22, 1, '8512888486', 'BBBBBBBBBBBB', 'bbbb', 'pcs', 13, 2, 130.00, 150.00, 'In Stock', '2025-11-16 13:13:31', '2025-11-16 13:13:31'),
+(20, 1, '1799953274', 'HELLO', 'SDAS', 'PCS', 40, 3, 100.00, 150.00, 'In Stock', '2025-11-16 06:45:30', '2025-11-18 15:29:01'),
+(21, 1, '9229941899', 'AAAAAACCC', 'aaa', 'pcs', 26, 2, 120.00, 130.00, 'In Stock', '2025-11-16 13:13:31', '2025-11-18 15:26:37'),
+(22, 1, '8512888486', 'BBBBBBBBBBBB', 'bbbb', 'pcs', 24, 2, 130.00, 150.00, 'In Stock', '2025-11-16 13:13:31', '2025-11-18 15:29:01'),
 (23, 1, '8753144515', 'CCCC', 'cccc', 'pcs', 133, 1, 1000.00, 1500.00, 'In Stock', '2025-11-16 14:40:15', '2025-11-16 14:40:15');
 
 -- --------------------------------------------------------
@@ -236,7 +236,12 @@ INSERT INTO `purchases` (`purchase_id`, `purchase_date`, `supplier_id`, `warehou
 (10, '2025-10-05', 2, 1, 471.00, 'Completed', 'Partially Paid', '2025-10-05 11:54:30'),
 (11, '2025-10-05', 2, 1, 55.00, 'Completed', 'Fully Paid', '2025-10-05 12:23:31'),
 (12, '2025-10-05', 2, 1, 45.00, 'Completed', 'Partially Paid', '2025-10-05 12:32:13'),
-(13, '2025-10-05', 3, 1, 360.00, 'Completed', 'Fully Paid', '2025-10-05 14:14:09');
+(13, '2025-10-05', 3, 1, 360.00, 'Completed', 'Fully Paid', '2025-10-05 14:14:09'),
+(14, '2025-11-18', 2, 1, 2640.00, 'Completed', 'Unpaid', '2025-11-18 14:08:40'),
+(15, '2025-11-18', 3, 1, 320.00, 'Completed', 'Unpaid', '2025-11-18 14:53:42'),
+(16, '2025-11-18', 3, 1, 330.00, 'Completed', 'Unpaid', '2025-11-18 15:11:27'),
+(17, '2025-11-18', 3, 1, 320.00, 'Completed', 'Unpaid', '2025-11-18 15:26:37'),
+(18, '2025-11-18', 3, 1, 3300.00, 'Completed', 'Unpaid', '2025-11-18 15:29:01');
 
 -- --------------------------------------------------------
 
@@ -248,29 +253,42 @@ CREATE TABLE `purchase_items` (
   `purchase_item_id` int(11) NOT NULL,
   `purchase_id` int(11) NOT NULL,
   `product_id` int(11) NOT NULL,
+  `supplier_id` int(11) DEFAULT NULL,
   `quantity` int(11) NOT NULL,
   `unit_cost` decimal(10,2) NOT NULL,
   `total_cost` decimal(10,2) NOT NULL,
-  `qty_received` int(11) NOT NULL DEFAULT 0
+  `qty_received` int(11) NOT NULL DEFAULT 0,
+  `created_at` datetime DEFAULT NULL,
+  `updated_at` datetime DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
 -- Dumping data for table `purchase_items`
 --
 
-INSERT INTO `purchase_items` (`purchase_item_id`, `purchase_id`, `product_id`, `quantity`, `unit_cost`, `total_cost`, `qty_received`) VALUES
-(2, 2, 16, 100, 45.00, 4500.00, 100),
-(5, 5, 18, 5, 120.00, 600.00, 5),
-(6, 6, 7, 22, 23.00, 506.00, 20),
-(7, 7, 12, 13, 23.00, 299.00, 13),
-(8, 8, 9, 10, 232.00, 2320.00, 10),
-(9, 9, 9, 2, 232.00, 464.00, 1),
-(10, 9, 12, 2, 23.00, 46.00, 2),
-(11, 10, 19, 2, 123.00, 246.00, 2),
-(12, 10, 16, 5, 45.00, 225.00, 5),
-(13, 11, 1, 10, 5.50, 55.00, 10),
-(14, 12, 16, 1, 45.00, 45.00, 1),
-(15, 13, 2, 2, 180.00, 360.00, 2);
+INSERT INTO `purchase_items` (`purchase_item_id`, `purchase_id`, `product_id`, `supplier_id`, `quantity`, `unit_cost`, `total_cost`, `qty_received`, `created_at`, `updated_at`) VALUES
+(2, 2, 16, 2, 100, 45.00, 4500.00, 100, '2025-08-30 22:44:08', NULL),
+(5, 5, 18, 1, 5, 120.00, 600.00, 5, '2025-08-30 23:37:55', NULL),
+(6, 6, 7, 1, 22, 23.00, 506.00, 20, '2025-08-30 23:43:58', NULL),
+(7, 7, 12, 3, 13, 23.00, 299.00, 13, '2025-08-31 13:48:40', NULL),
+(8, 8, 9, 3, 10, 232.00, 2320.00, 10, '2025-09-04 20:22:42', NULL),
+(9, 9, 9, 3, 2, 232.00, 464.00, 1, '2025-10-05 18:19:20', NULL),
+(10, 9, 12, 3, 2, 23.00, 46.00, 2, '2025-10-05 18:19:20', NULL),
+(11, 10, 19, 2, 2, 123.00, 246.00, 2, '2025-10-05 19:54:30', NULL),
+(12, 10, 16, 2, 5, 45.00, 225.00, 5, '2025-10-05 19:54:30', NULL),
+(13, 11, 1, 2, 10, 5.50, 55.00, 10, '2025-10-05 20:23:31', NULL),
+(14, 12, 16, 2, 1, 45.00, 45.00, 1, '2025-10-05 20:32:13', NULL),
+(15, 13, 2, 3, 2, 180.00, 360.00, 2, '2025-10-05 22:14:09', NULL),
+(16, 14, 21, 2, 12, 120.00, 1440.00, 12, '2025-11-18 22:08:40', NULL),
+(17, 14, 20, 2, 12, 100.00, 1200.00, 12, '2025-11-18 22:08:40', NULL),
+(18, 15, 21, 3, 1, 120.00, 120.00, 1, NULL, NULL),
+(19, 15, 20, 3, 2, 100.00, 200.00, 2, NULL, NULL),
+(20, 16, 22, 3, 1, 130.00, 130.00, 1, NULL, NULL),
+(21, 16, 20, 3, 2, 100.00, 200.00, 2, NULL, NULL),
+(22, 17, 21, 3, 1, 120.00, 120.00, 1, NULL, NULL),
+(23, 17, 20, 3, 2, 100.00, 200.00, 2, NULL, NULL),
+(24, 18, 22, 3, 10, 130.00, 1300.00, 10, NULL, NULL),
+(25, 18, 20, 3, 20, 100.00, 2000.00, 20, NULL, NULL);
 
 -- --------------------------------------------------------
 
@@ -473,7 +491,17 @@ INSERT INTO `stock_movements` (`stock_movement_id`, `product_id`, `warehouse_id`
 (19, 19, NULL, 2, 'purchase', 10, NULL, NULL, NULL, '2025-10-05 19:54:30'),
 (20, 1, NULL, 10, 'purchase', 11, NULL, NULL, NULL, '2025-10-05 20:23:31'),
 (21, 16, NULL, 1, 'purchase', 12, NULL, NULL, NULL, '2025-10-05 20:32:13'),
-(22, 2, NULL, 2, 'purchase', 13, NULL, NULL, NULL, '2025-10-05 22:14:09');
+(22, 2, NULL, 2, 'purchase', 13, NULL, NULL, NULL, '2025-10-05 22:14:09'),
+(23, 21, NULL, 12, 'purchase', 14, NULL, NULL, NULL, '2025-11-18 22:08:40'),
+(24, 20, NULL, 12, 'purchase', 14, NULL, NULL, NULL, '2025-11-18 22:08:40'),
+(25, 21, NULL, 1, 'purchase', 15, NULL, NULL, NULL, '2025-11-18 22:53:42'),
+(26, 20, NULL, 2, 'purchase', 15, NULL, NULL, NULL, '2025-11-18 22:53:42'),
+(27, 20, NULL, 2, 'purchase', 16, NULL, NULL, NULL, '2025-11-18 23:11:27'),
+(28, 22, NULL, 1, 'purchase', 16, NULL, NULL, NULL, '2025-11-18 23:11:27'),
+(29, 21, NULL, 1, 'purchase', 17, NULL, NULL, NULL, '2025-11-18 23:26:37'),
+(30, 20, NULL, 2, 'purchase', 17, NULL, NULL, NULL, '2025-11-18 23:26:37'),
+(31, 20, NULL, 20, 'purchase', 18, NULL, NULL, NULL, '2025-11-18 23:29:01'),
+(32, 22, NULL, 10, 'purchase', 18, NULL, NULL, NULL, '2025-11-18 23:29:01');
 
 -- --------------------------------------------------------
 
@@ -587,7 +615,8 @@ ALTER TABLE `purchases`
 ALTER TABLE `purchase_items`
   ADD PRIMARY KEY (`purchase_item_id`),
   ADD KEY `purchase_id` (`purchase_id`),
-  ADD KEY `product_id` (`product_id`);
+  ADD KEY `product_id` (`product_id`),
+  ADD KEY `fk_purchase_items_supplier` (`supplier_id`);
 
 --
 -- Indexes for table `purchase_returns`
@@ -704,13 +733,13 @@ ALTER TABLE `products`
 -- AUTO_INCREMENT for table `purchases`
 --
 ALTER TABLE `purchases`
-  MODIFY `purchase_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=14;
+  MODIFY `purchase_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=19;
 
 --
 -- AUTO_INCREMENT for table `purchase_items`
 --
 ALTER TABLE `purchase_items`
-  MODIFY `purchase_item_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=16;
+  MODIFY `purchase_item_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=26;
 
 --
 -- AUTO_INCREMENT for table `purchase_returns`
@@ -752,7 +781,7 @@ ALTER TABLE `sales_returns`
 -- AUTO_INCREMENT for table `stock_movements`
 --
 ALTER TABLE `stock_movements`
-  MODIFY `stock_movement_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=23;
+  MODIFY `stock_movement_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=33;
 
 --
 -- AUTO_INCREMENT for table `suppliers`
@@ -805,6 +834,7 @@ ALTER TABLE `purchases`
 -- Constraints for table `purchase_items`
 --
 ALTER TABLE `purchase_items`
+  ADD CONSTRAINT `fk_purchase_items_supplier` FOREIGN KEY (`supplier_id`) REFERENCES `suppliers` (`supplier_id`),
   ADD CONSTRAINT `purchase_items_ibfk_1` FOREIGN KEY (`purchase_id`) REFERENCES `purchases` (`purchase_id`) ON DELETE CASCADE,
   ADD CONSTRAINT `purchase_items_ibfk_2` FOREIGN KEY (`product_id`) REFERENCES `products` (`product_id`);
 
