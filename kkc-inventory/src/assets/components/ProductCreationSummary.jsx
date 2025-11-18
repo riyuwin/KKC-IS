@@ -1,11 +1,12 @@
 import React from "react";
-import { Card, CardContent, Typography, Stack, Divider } from "@mui/material";
+import { Card, CardContent, Typography, Stack, Divider, Chip } from "@mui/material";
 
 export default function ProductCreationSummary({
   itemsCount,
   totalInitialStock,
   totalInventoryCost,
   totalPotentialRevenue,
+  vatMode = "non-vat",
   lines = [],
   peso,
 }) {
@@ -16,10 +17,38 @@ export default function ProductCreationSummary({
     textOverflow: "ellipsis",
   };
 
-  const VAT_RATE = 0.12; // example VAT rate (12%)
-  const estVat = totalPotentialRevenue * VAT_RATE;
-  const totalWithVat = totalPotentialRevenue + estVat;
-  const estGrossProfit = totalPotentialRevenue - totalInventoryCost;
+  const VAT_RATE = 0.12; // PH VAT 12%
+
+  // Compute VAT according to mode
+  let netSales;   // sales before VAT
+  let vatAmount;  // VAT portion
+  let grossSales; // sales including VAT
+
+  if (vatMode === "ext-vat") {
+    // prices are VAT-exclusive: add 12% on top
+    netSales = totalPotentialRevenue;
+    vatAmount = netSales * VAT_RATE;
+    grossSales = netSales + vatAmount;
+  } else if (vatMode === "inc-vat") {
+    // prices are VAT-inclusive: extract 12/112 portion
+    grossSales = totalPotentialRevenue;
+    vatAmount = grossSales * (VAT_RATE / (1 + VAT_RATE)); // 12/112
+    netSales = grossSales - vatAmount;
+  } else {
+    // non-vat
+    netSales = totalPotentialRevenue;
+    vatAmount = 0;
+    grossSales = totalPotentialRevenue;
+  }
+
+  const estGrossProfit = netSales - totalInventoryCost;
+
+  const vatModeLabel =
+    vatMode === "inc-vat"
+      ? "VAT Inclusive (12%)"
+      : vatMode === "ext-vat"
+      ? "VAT Exclusive (12%)"
+      : "Non-VAT";
 
   return (
     <Card sx={{ borderRadius: 2, boxShadow: 3 }}>
@@ -28,6 +57,7 @@ export default function ProductCreationSummary({
           Products Summary
         </Typography>
 
+        {/* Overview section */}
         <Stack spacing={1.0} sx={{ mb: 1.5 }}>
           <Typography variant="body2" color="text.secondary">
             Overview
@@ -42,10 +72,16 @@ export default function ProductCreationSummary({
             <Typography color="text.secondary">Total initial stock</Typography>
             <Typography>{totalInitialStock}</Typography>
           </Stack>
+
+          <Stack direction="row" justifyContent="space-between" alignItems="center">
+            <Typography color="text.secondary">VAT mode</Typography>
+            <Chip size="small" label={vatModeLabel} />
+          </Stack>
         </Stack>
 
         <Divider sx={{ my: 1.5 }} />
 
+        {/* Value & VAT summary */}
         <Stack spacing={0.75}>
           <Stack direction="row" justifyContent="space-between">
             <Typography color="text.secondary">
@@ -56,35 +92,34 @@ export default function ProductCreationSummary({
 
           <Stack direction="row" justifyContent="space-between">
             <Typography color="text.secondary">
-              Potential sales (stock × selling price)
+              Sales base (before VAT)
             </Typography>
-            <Typography>{peso(totalPotentialRevenue)}</Typography>
+            <Typography>{peso(netSales)}</Typography>
           </Stack>
 
           <Stack direction="row" justifyContent="space-between">
             <Typography color="text.secondary">
-              Example VAT (12% of potential sales)
+              Output VAT (12%)
             </Typography>
-            <Typography>{peso(estVat)}</Typography>
+            <Typography>{peso(vatAmount)}</Typography>
           </Stack>
 
           <Stack direction="row" justifyContent="space-between">
             <Typography fontWeight={700}>
-              Potential sales + VAT
+              Total with VAT
             </Typography>
-            <Typography fontWeight={700}>{peso(totalWithVat)}</Typography>
+            <Typography fontWeight={700}>{peso(grossSales)}</Typography>
           </Stack>
 
           <Stack direction="row" justifyContent="space-between">
             <Typography color="text.secondary">
-              Est. gross profit (sales − cost)
+              Est. gross profit (sales base − cost)
             </Typography>
-            <Typography>
-              {peso(estGrossProfit)}
-            </Typography>
+            <Typography>{peso(estGrossProfit)}</Typography>
           </Stack>
         </Stack>
 
+        {/* Per-product list */}
         {lines.length > 0 && (
           <>
             <Divider sx={{ my: 1.5 }} />
@@ -98,8 +133,9 @@ export default function ProductCreationSummary({
                   l.cost_price === "" ? 0 : Number(l.cost_price || 0);
                 const price =
                   l.selling_price === "" ? 0 : Number(l.selling_price || 0);
+
+                const lineBaseSales = price * stock;       // before VAT logic
                 const lineCost = stock * cost;
-                const lineSales = stock * price;
 
                 return (
                   <Stack
@@ -115,7 +151,7 @@ export default function ProductCreationSummary({
                       {l.product_name}
                     </Typography>
                     <Typography sx={{ whiteSpace: "nowrap" }}>
-                      {stock} × {peso(price || cost)} = {peso(lineSales || lineCost)}
+                      {stock} × {peso(price || cost)} = {peso(lineBaseSales || lineCost)}
                     </Typography>
                   </Stack>
                 );

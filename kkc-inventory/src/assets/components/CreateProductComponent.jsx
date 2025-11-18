@@ -1,6 +1,6 @@
 import React from "react";
-import { Card, CardContent, Grid, Stack, TextField, MenuItem, Table, TableHead, TableRow, TableCell, TableBody, IconButton, Typography, Button, Box, Tooltip, Chip, InputAdornment } from "@mui/material";
-import { MdAdd, MdDelete } from "react-icons/md";
+import { Card, CardContent, Grid, Stack, TextField, MenuItem, Table, TableHead, TableRow, TableCell, TableBody, IconButton, Typography, Button, Box, Tooltip, Chip, InputAdornment, } from "@mui/material";
+import { MdAdd, MdDelete, MdEdit } from "react-icons/md";
 
 export default function CreateProductComponent({
   role,
@@ -8,6 +8,13 @@ export default function CreateProductComponent({
   selectedWarehouse,
   setSelectedWarehouse,
   suppliers,
+
+  // VAT
+  vatMode,
+  setVatMode,
+
+  // editing
+  editingId,
 
   // add-line fields
   pName,
@@ -29,13 +36,15 @@ export default function CreateProductComponent({
 
   // lines
   lines,
-  onAddLine,
+  onAddLine,   // add or update
+  onEditLine,  // when Edit button is clicked
   onRemoveLine,
 
   fieldSx,
   peso,
 }) {
   const isAdmin = String(role).toLowerCase() === "admin";
+  const isEditing = Boolean(editingId);
 
   const selectCommon = {
     displayEmpty: true,
@@ -48,6 +57,12 @@ export default function CreateProductComponent({
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
   };
+
+  const VAT_OPTIONS = [
+    { value: "non-vat", label: "Non-VAT" },
+    { value: "inc-vat", label: "VAT Inclusive (12%)" },
+    { value: "ext-vat", label: "VAT Exclusive (12%)" },
+  ];
 
   return (
     <Stack spacing={3} sx={{ maxWidth: "100%", minWidth: 0 }}>
@@ -95,7 +110,7 @@ export default function CreateProductComponent({
         </Card>
       )}
 
-      {/* Add Product */}
+      {/* Add / Edit Product */}
       <Card sx={{ borderRadius: 2, boxShadow: 3, minWidth: 0 }}>
         <CardContent sx={{ p: { xs: 2, sm: 3 } }}>
           <Grid container spacing={2}>
@@ -200,7 +215,7 @@ export default function CreateProductComponent({
               />
             </Grid>
 
-            {/* Row 5: Supplier | Add Button */}
+            {/* Row 5: Supplier | VAT mode */}
             <Grid item xs={12} sm={6}>
               <TextField
                 fullWidth
@@ -225,6 +240,28 @@ export default function CreateProductComponent({
             </Grid>
 
             <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                select
+                label="VAT"
+                size="small"
+                value={vatMode}
+                onChange={(e) => setVatMode(e.target.value)}
+                sx={fieldSx}
+                SelectProps={selectCommon}
+                InputLabelProps={{ shrink: true }}
+                helperText="to fix pag malinaw na lahat ^^"
+              >
+                {VAT_OPTIONS.map((opt) => (
+                  <MenuItem key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </MenuItem>
+                ))}
+              </TextField>
+            </Grid>
+
+            {/* Row 6: Stock badge + Add/Update button */}
+            <Grid item xs={12}>
               <Stack
                 direction="row"
                 spacing={1.5}
@@ -256,7 +293,7 @@ export default function CreateProductComponent({
                   disabled={!pName.trim() || !supplierId}
                   sx={{ minWidth: 160 }}
                 >
-                  Add Product
+                  {isEditing ? "Update Product" : "Add Product"}
                 </Button>
               </Stack>
             </Grid>
@@ -273,7 +310,7 @@ export default function CreateProductComponent({
               sx={{
                 tableLayout: "fixed",
                 width: "100%",
-                "& th, & td": { px: 1 }, // tighter padding so everything fits
+                "& th, & td": { px: 1 },
               }}
             >
               <colgroup>
@@ -345,9 +382,7 @@ export default function CreateProductComponent({
                     <TableCell align="center">
                       <Typography
                         noWrap
-                        title={
-                          l.cost_price === "" ? "—" : peso(l.cost_price)
-                        }
+                        title={l.cost_price === "" ? "—" : peso(l.cost_price)}
                         sx={ellipsisTextSx}
                       >
                         {l.cost_price === "" ? "—" : peso(l.cost_price)}
@@ -378,15 +413,30 @@ export default function CreateProductComponent({
                       </Typography>
                     </TableCell>
                     <TableCell align="center">
-                      <Tooltip title="Remove">
-                        <IconButton
-                          color="error"
-                          onClick={() => onRemoveLine(l.temp_id)}
-                          size="small"
-                        >
-                          <MdDelete />
-                        </IconButton>
-                      </Tooltip>
+                      <Stack
+                        direction="row"
+                        spacing={0.5}
+                        justifyContent="center"
+                      >
+                        <Tooltip title="Edit">
+                          <IconButton
+                            color="primary"
+                            size="small"
+                            onClick={() => onEditLine(l)}
+                          >
+                            <MdEdit />
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title="Remove">
+                          <IconButton
+                            color="error"
+                            onClick={() => onRemoveLine(l.temp_id)}
+                            size="small"
+                          >
+                            <MdDelete />
+                          </IconButton>
+                        </Tooltip>
+                      </Stack>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -395,7 +445,7 @@ export default function CreateProductComponent({
                   <TableRow>
                     <TableCell colSpan={9}>
                       <Box sx={{ p: 3 }}>
-                        <Typography color="text.secondary">
+                        <Typography color="text.secondary" align="center">
                           No products yet. Add a product above.
                         </Typography>
                       </Box>

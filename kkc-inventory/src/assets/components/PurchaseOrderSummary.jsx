@@ -2,45 +2,107 @@ import React from "react";
 import { Card, CardContent, Typography, Stack, Divider, Chip } from "@mui/material";
 
 export default function PurchaseOrderSummary({
-  supplierName, purchaseDate, paymentStatus,
-  itemsCount, subtotal, vat, total,
-  globalStatus, totalQtyOrdered, totalQtyReceived, totalQtyOutstanding, outstandingValue,
-  lines = [], peso,
+  supplierName,
+  purchaseDate,
+  paymentStatus,
+  itemsCount,
+  subtotal,
+  vat,
+  total,
+  globalStatus,
+  totalQtyOrdered,
+  totalQtyReceived,
+  totalQtyOutstanding,
+  outstandingValue,
+  lines = [],
+  peso,
+  vatRate = 0.12,
 }) {
+  const valueEllipsisSx = {
+    textAlign: "right",
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    maxWidth: "60%",
+  };
+
+  const labelSx = { color: "text.secondary" };
+
+  const vatPercentLabel = `${Math.round((vatRate || 0) * 100)}%`;
+
   return (
-    <Card sx={{ borderRadius: 2, boxShadow: 3 }}>
+    <Card
+      sx={{
+        borderRadius: 2,
+        boxShadow: 3,
+        maxWidth: "100%",
+        minWidth: 0,
+        overflow: "hidden",
+      }}
+    >
       <CardContent sx={{ p: 3 }}>
-        <Typography variant="h6" fontWeight={700} gutterBottom>Order Summary</Typography>
+        <Typography variant="h6" fontWeight={700} gutterBottom noWrap>
+          Order Summary
+        </Typography>
 
         <Stack spacing={1.0} sx={{ mb: 1.5 }}>
-          <Typography variant="body2" color="text.secondary">Supplier</Typography>
-          <Typography>{supplierName || "—"}</Typography>
+          <Typography variant="body2" sx={labelSx}>
+            Supplier
+          </Typography>
+          <Typography
+            sx={{
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+            }}
+            title={supplierName}
+          >
+            {supplierName || "—"}
+          </Typography>
 
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>Date</Typography>
-          <Typography>{purchaseDate || "—"}</Typography>
+          <Typography
+            variant="body2"
+            sx={{ ...labelSx, mt: 1 }}
+          >
+            Date
+          </Typography>
+          <Typography noWrap title={purchaseDate}>
+            {purchaseDate || "—"}
+          </Typography>
 
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>Payment Status</Typography>
-          <Chip size="small" label={paymentStatus} />
+          <Typography
+            variant="body2"
+            sx={{ ...labelSx, mt: 1 }}
+          >
+            Payment Status
+          </Typography>
+          <Chip
+            size="small"
+            label={paymentStatus || "—"}
+            sx={{ maxWidth: "100%" }}
+          />
         </Stack>
 
         <Divider sx={{ my: 1.5 }} />
 
         <Stack spacing={0.75}>
-          <Stack direction="row" justifyContent="space-between">
-            <Typography color="text.secondary">Items</Typography>
-            <Typography>{itemsCount}</Typography>
+          <Stack direction="row" justifyContent="space-between" alignItems="center">
+            <Typography sx={labelSx}>Items</Typography>
+            <Typography sx={valueEllipsisSx}>{itemsCount}</Typography>
           </Stack>
-          <Stack direction="row" justifyContent="space-between">
-            <Typography color="text.secondary">Subtotal</Typography>
-            <Typography>{peso(subtotal)}</Typography>
+          <Stack direction="row" justifyContent="space-between" alignItems="center">
+            <Typography sx={labelSx}>Subtotal</Typography>
+            <Typography sx={valueEllipsisSx}>{peso(subtotal)}</Typography>
           </Stack>
-          <Stack direction="row" justifyContent="space-between">
-            <Typography color="text.secondary">VAT (12%)</Typography>
-            <Typography>{peso(vat)}</Typography>
+          <Stack direction="row" justifyContent="space-between" alignItems="center">
+            <Typography sx={labelSx}>VAT ({vatPercentLabel})</Typography>
+            <Typography sx={valueEllipsisSx}>{peso(vat)}</Typography>
           </Stack>
-          <Stack direction="row" justifyContent="space-between">
+          <Stack direction="row" justifyContent="space-between" alignItems="center">
             <Typography fontWeight={700}>Total</Typography>
-            <Typography fontWeight={700}>{peso(total)}</Typography>
+            <Typography fontWeight={700} sx={valueEllipsisSx}>
+              {peso(total)}
+            </Typography>
           </Stack>
         </Stack>
 
@@ -48,41 +110,70 @@ export default function PurchaseOrderSummary({
 
         <Stack spacing={0.75} sx={{ mb: 1 }}>
           <Stack direction="row" justifyContent="space-between" alignItems="center">
-            <Typography color="text.secondary">Delivery Status</Typography>
-            <Chip size="small" color={globalStatus === "Completed" ? "success" : "warning"} label={globalStatus} />
+            <Typography sx={labelSx}>Delivery Status</Typography>
+            <Chip
+              size="small"
+              color={globalStatus === "Completed" ? "success" : "warning"}
+              label={globalStatus}
+              sx={{ maxWidth: "100%" }}
+            />
           </Stack>
-          <Stack direction="row" justifyContent="space-between">
-            <Typography color="text.secondary">Ordered Qty</Typography>
-            <Typography>{totalQtyOrdered}</Typography>
+          <Stack direction="row" justifyContent="space-between" alignItems="center">
+            <Typography sx={labelSx}>Ordered Qty</Typography>
+            <Typography sx={valueEllipsisSx}>{totalQtyOrdered}</Typography>
           </Stack>
-          <Stack direction="row" justifyContent="space-between">
-            <Typography color="text.secondary">Received Qty</Typography>
-            <Typography>{totalQtyReceived}</Typography>
+          <Stack direction="row" justifyContent="space-between" alignItems="center">
+            <Typography sx={labelSx}>Received Qty</Typography>
+            <Typography sx={valueEllipsisSx}>{totalQtyReceived}</Typography>
           </Stack>
-          <Stack direction="row" justifyContent="space-between">
-            <Typography color="text.secondary">Outstanding Qty</Typography>
-            <Typography>{totalQtyOutstanding}</Typography>
+          <Stack direction="row" justifyContent="space-between" alignItems="center">
+            <Typography sx={labelSx}>Outstanding Qty</Typography>
+            <Typography sx={valueEllipsisSx}>{totalQtyOutstanding}</Typography>
           </Stack>
-          <Stack direction="row" justifyContent="space-between">
-            <Typography color="text.secondary">Outstanding Value</Typography>
-            <Typography>{peso(outstandingValue)}</Typography>
+          <Stack direction="row" justifyContent="space-between" alignItems="center">
+            <Typography sx={labelSx}>Outstanding Value</Typography>
+            <Typography sx={valueEllipsisSx}>{peso(outstandingValue)}</Typography>
           </Stack>
         </Stack>
 
         {lines.length > 0 && (
           <>
             <Divider sx={{ my: 1.5 }} />
-            <Typography variant="subtitle2" gutterBottom>Items</Typography>
+            <Typography variant="subtitle2" gutterBottom>
+              Items
+            </Typography>
             <Stack spacing={0.75}>
-              {lines.slice(0,5).map(l=>{
-                const lineTotal = Number(l.quantity||0)*Number(l.unit_cost||0);
+              {lines.slice(0, 5).map((l) => {
+                const lineTotal =
+                  Number(l.quantity || 0) * Number(l.unit_cost || 0);
                 return (
-                  <Stack key={l.temp_id} direction="row" justifyContent="space-between">
-                    <Typography sx={{ mr: 1, flex: 1, minWidth: 0 }} noWrap title={l.product_name}>
+                  <Stack
+                    key={l.temp_id}
+                    direction="row"
+                    justifyContent="space-between"
+                    alignItems="center"
+                    sx={{ gap: 1 }}
+                  >
+                    <Typography
+                      sx={{ mr: 1, flex: 1, minWidth: 0 }}
+                      noWrap
+                      title={l.product_name}
+                    >
                       {l.product_name}
                     </Typography>
-                    <Typography sx={{ whiteSpace: "nowrap" }}>
-                      {`${l.quantity} × ${peso(l.unit_cost)} = ${peso(lineTotal)}`}
+                    <Typography
+                      sx={{
+                        whiteSpace: "nowrap",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                      }}
+                      title={`${l.quantity} × ${peso(l.unit_cost)} = ${peso(
+                        lineTotal
+                      )}`}
+                    >
+                      {`${l.quantity} × ${peso(l.unit_cost)} = ${peso(
+                        lineTotal
+                      )}`}
                     </Typography>
                   </Stack>
                 );

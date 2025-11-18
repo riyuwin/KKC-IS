@@ -37,6 +37,12 @@ export default function CreateProduct() {
   const [sellingPrice, setSellingPrice] = useState("");
   const [supplierId, setSupplierId] = useState("");
 
+  // VAT mode: non-vat | inc-vat | ext-vat
+  const [vatMode, setVatMode] = useState("non-vat");
+
+  // which line is being edited 
+  const [editingId, setEditingId] = useState(null);
+
   // session & warehouses (for admin)
   useEffect(() => {
     (async () => {
@@ -78,7 +84,7 @@ export default function CreateProduct() {
     })();
   }, []);
 
-  // summary calculations
+  // summary calculations (base, before VAT logic)
   const itemsCount = lines.length;
   const totalInitialStock = useMemo(
     () => lines.reduce((sum, l) => sum + Number(l.stock || 0), 0),
@@ -103,7 +109,18 @@ export default function CreateProduct() {
     [lines]
   );
 
-  function addLine() {
+  function resetForm() {
+    setPName("");
+    setSku(generateClientSku());
+    setDescription("");
+    setUnit("");
+    setStock("");
+    setCostPrice("");
+    setSellingPrice("");
+    setSupplierId("");
+  }
+
+  function addOrUpdateLine() {
     if (!pName.trim()) {
       alert("Product Name is required.");
       return;
@@ -122,35 +139,85 @@ export default function CreateProduct() {
     );
     const supplier_name = supplier?.supplier_name || supplier?.name || "";
 
-    setLines((ls) => [
-      ...ls,
-      {
-        temp_id: crypto.randomUUID(),
-        product_name: pName.trim(),
-        sku: String(sku),
-        description: description.trim(),
-        unit: unit.trim(),
-        stock: Number(stock || 0),
-        cost_price: costPrice === "" ? "" : Number(costPrice),
-        selling_price: sellingPrice === "" ? "" : Number(sellingPrice),
-        supplier_id: supplierId,
-        supplier_name,
-      },
-    ]);
+    if (editingId) {
+      // update existing line
+      setLines((ls) =>
+        ls.map((l) =>
+          l.temp_id === editingId
+            ? {
+                ...l,
+                product_name: pName.trim(),
+                sku: String(sku),
+                description: description.trim(),
+                unit: unit.trim(),
+                stock: Number(stock || 0),
+                cost_price: costPrice === "" ? "" : Number(costPrice),
+                selling_price:
+                  sellingPrice === "" ? "" : Number(sellingPrice),
+                supplier_id: supplierId,
+                supplier_name,
+              }
+            : l
+        )
+      );
+    } else {
+      // add new line
+      setLines((ls) => [
+        ...ls,
+        {
+          temp_id: crypto.randomUUID(),
+          product_name: pName.trim(),
+          sku: String(sku),
+          description: description.trim(),
+          unit: unit.trim(),
+          stock: Number(stock || 0),
+          cost_price: costPrice === "" ? "" : Number(costPrice),
+          selling_price: sellingPrice === "" ? "" : Number(sellingPrice),
+          supplier_id: supplierId,
+          supplier_name,
+        },
+      ]);
+    }
 
-    // reset add-line fields
-    setPName("");
-    setSku(generateClientSku());
-    setDescription("");
-    setUnit("");
-    setStock("");
-    setCostPrice("");
-    setSellingPrice("");
-    setSupplierId("");
+    setEditingId(null);
+    resetForm();
   }
 
   function removeLine(id) {
     setLines((ls) => ls.filter((l) => l.temp_id !== id));
+
+    // if you're deleting the row currently being edited, reset the form
+    setEditingId((curr) => {
+      if (curr === id) {
+        resetForm();
+        return null;
+      }
+      return curr;
+    });
+  }
+
+  function startEditLine(line) {
+    setEditingId(line.temp_id);
+    setPName(line.product_name || "");
+    setSku(line.sku || generateClientSku());
+    setDescription(line.description || "");
+    setUnit(line.unit || "");
+    setStock(
+      line.stock === "" || line.stock === null || line.stock === undefined
+        ? ""
+        : String(line.stock)
+    );
+    setCostPrice(
+      line.cost_price === "" || line.cost_price === null
+        ? ""
+        : String(line.cost_price)
+    );
+    setSellingPrice(
+      line.selling_price === "" || line.selling_price === null
+        ? ""
+        : String(line.selling_price)
+    );
+    setSupplierId(line.supplier_id || "");
   }
 
   async function save() {
@@ -207,7 +274,7 @@ export default function CreateProduct() {
         <Typography variant="h4" fontWeight={700} sx={{ mb: 3 }}>
           New Products
         </Typography>
-
+        
         <Grid
           container
           spacing={3}
@@ -226,6 +293,15 @@ export default function CreateProduct() {
               selectedWarehouse={selectedWarehouse}
               setSelectedWarehouse={setSelectedWarehouse}
               suppliers={suppliers}
+              // VAT
+              vatMode={vatMode}
+              setVatMode={setVatMode}
+              // editing
+              editingId={editingId}
+              // add/update + edit + remove
+              onAddLine={addOrUpdateLine}
+              onEditLine={startEditLine}
+              onRemoveLine={removeLine}
               // add-line fields
               pName={pName}
               setPName={setPName}
@@ -245,8 +321,6 @@ export default function CreateProduct() {
               setSupplierId={setSupplierId}
               // lines
               lines={lines}
-              onAddLine={addLine}
-              onRemoveLine={removeLine}
               fieldSx={fieldSx}
               peso={peso}
             />
@@ -287,6 +361,7 @@ export default function CreateProduct() {
               totalInitialStock={totalInitialStock}
               totalInventoryCost={totalInventoryCost}
               totalPotentialRevenue={totalPotentialRevenue}
+              vatMode={vatMode}
               lines={lines}
               peso={peso}
             />

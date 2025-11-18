@@ -1,31 +1,52 @@
 import React from "react";
-import {
-  Card, CardContent, Grid, Stack, TextField, MenuItem, Chip,
-  Table, TableHead, TableRow, TableCell, TableBody, IconButton,
-  Typography, Button, InputAdornment, Box, Tooltip, ListItemText
-} from "@mui/material";
-import { MdAdd, MdDelete } from "react-icons/md";
+import { Card, CardContent, Stack, TextField, MenuItem, Chip, Table, TableHead, TableRow, TableCell, TableBody, IconButton, Typography, Button, InputAdornment, Box, Tooltip, ListItemText, } from "@mui/material";
+import { MdAdd, MdDelete, MdEdit } from "react-icons/md";
 
 export default function PurchaseEditorLeft({
   // header
-  purchaseDate, setPurchaseDate,
-  supplierId, setSupplierId,
-  paymentStatus, setPaymentStatus,
-  suppliers, productsForSupplier,
+  purchaseDate,
+  setPurchaseDate,
+  supplierId,
+  setSupplierId,
+  paymentStatus,
+  setPaymentStatus,
+  suppliers,
+  productsForSupplier,
   globalStatus,
-  PS, DS,
+  PS,
+  DS,
+  // VAT
+  vatRate,
+  setVatRate,
+  vatOptions,
 
   // add-line
-  pId, qty, unit, recv,
-  onSelectProduct, setQty, setUnit, setRecv,
-  addTotal, addRemain, addStatus,
+  pId,
+  qty,
+  unit,
+  recv,
+  onSelectProduct,
+  setQty,
+  setUnit,
+  setRecv,
+  addTotal,
+  addRemain,
+  addStatus,
   onAddLine,
 
+  // editing
+  editingId,
+  onEditLine,
+
   // table
-  lines, onUpdateCell, onRemoveLine, grandTotal,
+  lines,
+  onUpdateCell,
+  onRemoveLine,
+  grandTotal,
 
   // styling & utils
-  fieldSx, peso,
+  fieldSx,
+  peso,
 }) {
   const selectCommon = {
     displayEmpty: true,
@@ -54,16 +75,37 @@ export default function PurchaseEditorLeft({
     </Box>
   );
 
-  
+  const vatSelectOptions = vatOptions || [];
+
+  const ellipsisTextSx = {
+    maxWidth: "100%",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  };
+
+  const isEditing = Boolean(editingId);
 
   return (
     <Stack spacing={3} sx={{ maxWidth: "100%", minWidth: 0 }}>
       {/* Header */}
       <Card sx={{ borderRadius: 2, boxShadow: 3, minWidth: 0 }}>
         <CardContent sx={{ p: { xs: 2, sm: 3 } }}>
-          <Grid container spacing={2}>
+          {/* FIXED 2-COLUMN LAYOUT */}
+          <Box
+            sx={{
+              display: "grid",
+              gridTemplateColumns: {
+                xs: "1fr",
+                sm: "repeat(2, minmax(0, 1fr))",
+              },
+              columnGap: 2,
+              rowGap: 2,
+              alignItems: "center",
+            }}
+          >
             {/* Row 1: Date | Supplier */}
-            <Grid item xs={12} sm={6}>
+            <Box sx={{ minWidth: 0 }}>
               <TextField
                 fullWidth
                 type="date"
@@ -74,31 +116,34 @@ export default function PurchaseEditorLeft({
                 InputLabelProps={{ shrink: true }}
                 sx={fieldSx}
               />
-            </Grid>
-            <Grid item xs={12} sm={6} sx={{ minWidth: 0 }}>
+            </Box>
+
+            <Box sx={{ minWidth: 0 }}>
               <TextField
                 fullWidth
                 select
                 label="Supplier"
                 size="small"
                 value={supplierId}
-                onChange={(e) => { setSupplierId(e.target.value); }}
+                onChange={(e) => {
+                  setSupplierId(e.target.value);
+                }}
                 SelectProps={{
                   ...selectCommon,
                   renderValue: (v) => {
                     if (!v) return renderValueEllipsis("Select supplier…");
-                    const sel = suppliers.find(s => String(s.supplier_id) === String(v));
+                    const sel = suppliers.find((s) => String(s.supplier_id) === String(v));
                     return renderValueEllipsis(sel?.supplier_name || "Select supplier…");
-                  }
+                  },
                 }}
                 placeholder="Select supplier…"
                 InputLabelProps={{ shrink: true }}
                 sx={{ ...fieldSx, ...ellipsisSelectSx }}
               >
                 <MenuItem disabled value="">
-                  <em>Select supplier…</em>
+                  <em>Select Supplier…</em>
                 </MenuItem>
-                {suppliers.map(s => (
+                {suppliers.map((s) => (
                   <MenuItem key={s.supplier_id} value={s.supplier_id}>
                     <Tooltip title={s.supplier_name}>
                       <ListItemText
@@ -109,10 +154,10 @@ export default function PurchaseEditorLeft({
                   </MenuItem>
                 ))}
               </TextField>
-            </Grid>
+            </Box>
 
-            {/* Row 2: Payment Status | Delivery Chip */}
-            <Grid item xs={12} sm={6} sx={{ minWidth: 0 }}>
+            {/* Row 2: Payment Status | VAT */}
+            <Box sx={{ minWidth: 0 }}>
               <TextField
                 fullWidth
                 select
@@ -122,16 +167,57 @@ export default function PurchaseEditorLeft({
                 onChange={(e) => setPaymentStatus(e.target.value)}
                 SelectProps={{
                   ...selectCommon,
-                  renderValue: (v) => renderValueEllipsis(PS.find(p => p.value === v)?.label || "Select payment status…")
+                  renderValue: (v) =>
+                    renderValueEllipsis(
+                      PS.find((p) => p.value === v)?.label || "Select payment status…"
+                    ),
                 }}
                 InputLabelProps={{ shrink: true }}
                 sx={{ ...fieldSx, ...ellipsisSelectSx }}
               >
-                {PS.map(p => <MenuItem key={p.value} value={p.value}>{p.label}</MenuItem>)}
+                {PS.map((p) => (
+                  <MenuItem key={p.value} value={p.value}>
+                    {p.label}
+                  </MenuItem>
+                ))}
               </TextField>
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <Stack direction="row" spacing={1.5} alignItems="center" sx={{ minHeight: 44 }}>
+            </Box>
+
+            <Box sx={{ minWidth: 0 }}>
+              <TextField
+                fullWidth
+                select
+                label="VAT"
+                size="small"
+                value={String(vatRate)}
+                onChange={(e) => setVatRate(Number(e.target.value))}
+                SelectProps={{
+                  ...selectCommon,
+                  renderValue: (v) =>
+                    renderValueEllipsis(
+                      vatSelectOptions.find((opt) => String(opt.value) === String(v))?.label ||
+                        "Select VAT…"
+                    ),
+                }}
+                InputLabelProps={{ shrink: true }}
+                sx={{ ...fieldSx, ...ellipsisSelectSx }}
+              >
+                {vatSelectOptions.map((opt) => (
+                  <MenuItem key={opt.value} value={String(opt.value)}>
+                    {opt.label}
+                  </MenuItem>
+                ))}
+              </TextField>
+            </Box>
+
+            {/* Row 3: Delivery Status | empty placeholder to keep 2-per-row */}
+            <Box sx={{ minWidth: 0 }}>
+              <Stack
+                direction="row"
+                spacing={1.5}
+                alignItems="center"
+                sx={{ minHeight: 44, width: "100%" }}
+              >
                 <Typography color="text.secondary">Delivery Status:</Typography>
                 <Chip
                   size="small"
@@ -139,17 +225,30 @@ export default function PurchaseEditorLeft({
                   label={globalStatus}
                 />
               </Stack>
-            </Grid>
-          </Grid>
+            </Box>
+
+            <Box sx={{ minWidth: 0 }} />
+          </Box>
         </CardContent>
       </Card>
 
-      {/* Add Product */}
+      {/* Add Product – fixed 2-column layout */}
       <Card sx={{ borderRadius: 2, boxShadow: 3, minWidth: 0 }}>
         <CardContent sx={{ p: { xs: 2, sm: 3 } }}>
-          <Grid container spacing={2}>
-            {/* Row 1: Product | Qty */}
-            <Grid item xs={12} sm={6} sx={{ minWidth: 0 }}>
+          <Box
+            sx={{
+              display: "grid",
+              gridTemplateColumns: {
+                xs: "1fr",
+                sm: "repeat(2, minmax(0, 1fr))",
+              },
+              columnGap: 2,
+              rowGap: 2,
+              alignItems: "center",
+            }}
+          >
+            {/* Row 1: Product | Qty Ordered */}
+            <Box sx={{ minWidth: 0 }}>
               <TextField
                 fullWidth
                 select
@@ -162,11 +261,13 @@ export default function PurchaseEditorLeft({
                   ...selectCommon,
                   renderValue: (v) => {
                     if (!v) return renderValueEllipsis("Select product…");
-                    const sel = productsForSupplier.find(p => String(p.product_id) === String(v));
+                    const sel = productsForSupplier.find(
+                      (p) => String(p.product_id) === String(v)
+                    );
                     const name = sel?.product_name || "";
                     const sku = sel?.sku ? ` (${sel.sku})` : "";
                     return renderValueEllipsis(`${name}${sku}`);
-                  }
+                  },
                 }}
                 placeholder="Select product…"
                 InputLabelProps={{ shrink: true }}
@@ -175,9 +276,11 @@ export default function PurchaseEditorLeft({
                 <MenuItem disabled value="">
                   <em>Select product…</em>
                 </MenuItem>
-                {productsForSupplier.map(p => (
+                {productsForSupplier.map((p) => (
                   <MenuItem key={p.product_id} value={String(p.product_id)}>
-                    <Tooltip title={`${p.product_name}${p.sku ? ` (${p.sku})` : ``}`}>
+                    <Tooltip
+                      title={`${p.product_name}${p.sku ? ` (${p.sku})` : ``}`}
+                    >
                       <ListItemText
                         primaryTypographyProps={{ noWrap: true }}
                         secondaryTypographyProps={{ noWrap: true }}
@@ -188,8 +291,9 @@ export default function PurchaseEditorLeft({
                   </MenuItem>
                 ))}
               </TextField>
-            </Grid>
-            <Grid item xs={12} sm={6}>
+            </Box>
+
+            <Box sx={{ minWidth: 0 }}>
               <TextField
                 fullWidth
                 label="Qty. Ordered"
@@ -200,10 +304,23 @@ export default function PurchaseEditorLeft({
                 inputProps={{ min: 0 }}
                 sx={fieldSx}
               />
-            </Grid>
+            </Box>
 
-            {/* Row 2: Unit | Total */}
-            <Grid item xs={12} sm={6}>
+            {/* Row 2: Qty Received | Unit Cost */}
+            <Box sx={{ minWidth: 0 }}>
+              <TextField
+                fullWidth
+                label="Qty. Received"
+                size="small"
+                type="number"
+                value={recv}
+                onChange={(e) => setRecv(e.target.value)}
+                inputProps={{ min: 0, max: Number(qty) || undefined }}
+                sx={fieldSx}
+              />
+            </Box>
+
+            <Box sx={{ minWidth: 0 }}>
               <TextField
                 fullWidth
                 label="Unit Cost"
@@ -215,37 +332,57 @@ export default function PurchaseEditorLeft({
                 sx={fieldSx}
                 InputProps={{ startAdornment: <InputAdornment position="start">₱</InputAdornment> }}
               />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField fullWidth label="Total Cost" size="small" value={peso(addTotal)} disabled sx={fieldSx} />
-            </Grid>
+            </Box>
 
-            {/* Row 3: Received | Deliverystatus */}
-            <Grid item xs={12} sm={6}>
+            {/* Row 3: Total Cost | Delivery Status */}
+            <Box sx={{ minWidth: 0 }}>
               <TextField
                 fullWidth
-                label="Qty. Received"
+                label="Total Cost"
                 size="small"
-                type="number"
-                value={recv}
-                onChange={(e) => setRecv(e.target.value)}
-                inputProps={{ min: 0, max: Number(qty) || undefined }}
+                value={peso(addTotal)}
+                disabled
                 sx={fieldSx}
               />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField fullWidth select label="Delivery Status" size="small" value={addStatus} disabled sx={fieldSx}>
-                {DS.map(d => <MenuItem key={d.value} value={d.value}>{d.label}</MenuItem>)}
-              </TextField>
-            </Grid>
+            </Box>
 
-            {/* Row 4: Remaining | Add */}
-            <Grid item xs={12} sm={6}>
-              <TextField fullWidth label="Remaining to Receive" size="small" value={addRemain} disabled sx={fieldSx} />
-            </Grid>
-            <Grid item xs={12} sm={6}>
+            <Box sx={{ minWidth: 0 }}>
+              <TextField
+                fullWidth
+                select
+                label="Delivery Status"
+                size="small"
+                value={addStatus}
+                disabled
+                sx={fieldSx}
+              >
+                {DS.map((d) => (
+                  <MenuItem key={d.value} value={d.value}>
+                    {d.label}
+                  </MenuItem>
+                ))}
+              </TextField>
+            </Box>
+
+            {/* Row 4: Remaining | Chip + Add/Update button */}
+            <Box sx={{ minWidth: 0 }}>
+              <TextField
+                fullWidth
+                label="Remaining to Receive"
+                size="small"
+                value={addRemain}
+                disabled
+                sx={fieldSx}
+              />
+            </Box>
+
+            <Box sx={{ minWidth: 0 }}>
               <Stack direction="row" spacing={1.5} alignItems="center" sx={{ minHeight: 44 }}>
-                <Chip size="small" color={addStatus === "Completed" ? "success" : "warning"} label={addStatus} />
+                <Chip
+                  size="small"
+                  color={addStatus === "Completed" ? "success" : "warning"}
+                  label={addStatus}
+                />
                 <Box sx={{ flex: 1 }} />
                 <Button
                   startIcon={<MdAdd />}
@@ -254,45 +391,51 @@ export default function PurchaseEditorLeft({
                   disabled={!pId || !Number(qty)}
                   sx={{ minWidth: 140 }}
                 >
-                  Add Product
+                  {isEditing ? "Update Item" : "Add Product"}
                 </Button>
               </Stack>
-            </Grid>
-          </Grid>
+            </Box>
+          </Box>
         </CardContent>
       </Card>
 
-      {/* Lines table */}
       <Card sx={{ borderRadius: 2, boxShadow: 3, minWidth: 0 }}>
         <CardContent sx={{ p: 0 }}>
-          <Box sx={{ overflowX: "auto" }}>
-            <Table size="small" sx={{ tableLayout: "fixed", width: "100%", minWidth: 720 }}>
+          <Box sx={{ width: "100%", overflowX: "hidden" }}>
+            <Table
+              size="small"
+              sx={{
+                tableLayout: "fixed",
+                width: "100%",
+                "& th, & td": { px: 1 },
+              }}
+            >
               <colgroup>
-                <col style={{ width: 100 }} />   {/* Product */}
-                <col style={{ width: "40%" }} />     {/* Qty Ordered */}
-                <col style={{ width: 110 }} />     {/* Unit ₱ */}
-                <col style={{ width: 110 }} />     {/* Qty Received */}
-                <col style={{ width: 100 }} />     {/* Remaining */}
-                <col style={{ width: 120 }} />     {/* Status */}
-                <col style={{ width: 140 }} />     {/* Total ₱ */}
-                <col style={{ width: 64 }} />      {/* Actions */}
+                <col style={{ width: "20%" }} /> {/* Product */}
+                <col style={{ width: "10%" }} /> {/* Qty Ordered */}
+                <col style={{ width: "10%" }} /> {/* Qty Received */}
+                <col style={{ width: "10%" }} /> {/* Unit ₱ */}
+                <col style={{ width: "10%" }} /> {/* Remaining */}
+                <col style={{ width: "15%" }} /> {/* Status */}
+                <col style={{ width: "15%" }} /> {/* Total ₱ */}
+                <col style={{ width: "10%" }} /> {/* Actions */}
               </colgroup>
 
               <TableHead>
                 <TableRow>
-                  <TableCell>Product</TableCell>
+                  <TableCell align="center">Product</TableCell>
                   <TableCell align="center">Qty Ordered</TableCell>
-                  <TableCell align="center">Unit ₱</TableCell>
                   <TableCell align="center">Qty Received</TableCell>
+                  <TableCell align="center">Unit ₱</TableCell>
                   <TableCell align="center">Remaining</TableCell>
                   <TableCell align="center">Status</TableCell>
                   <TableCell align="center">Total ₱</TableCell>
-                  <TableCell />
+                  <TableCell align="center">Actions</TableCell>
                 </TableRow>
               </TableHead>
 
               <TableBody>
-                {lines.map(l => {
+                {lines.map((l) => {
                   const q = Number(l.quantity || 0);
                   const r = Number(l.qty_received || 0);
                   const u = Number(l.unit_cost || 0);
@@ -303,31 +446,74 @@ export default function PurchaseEditorLeft({
                   return (
                     <TableRow key={l.temp_id}>
                       <TableCell align="center" sx={{ minWidth: 0 }}>
-                        <Typography noWrap title={l.product_name}>{l.product_name}</Typography>
+                        <Typography noWrap title={l.product_name} sx={ellipsisTextSx}>
+                          {l.product_name}
+                        </Typography>
                       </TableCell>
 
                       <TableCell align="center">
-                        <Typography variant="body2">{q}</Typography>
+                        <Typography variant="body2" sx={ellipsisTextSx}>
+                          {q}
+                        </Typography>
                       </TableCell>
 
                       <TableCell align="center">
-                        <Typography variant="body2">{peso(u)}</Typography>
+                        <Typography variant="body2" sx={ellipsisTextSx}>
+                          {r}
+                        </Typography>
                       </TableCell>
 
                       <TableCell align="center">
-                        <Typography variant="body2">{r}</Typography>
+                        <Typography variant="body2" sx={ellipsisTextSx}>
+                          {peso(u)}
+                        </Typography>
                       </TableCell>
 
-                      <TableCell align="center">{remain}</TableCell>
-
                       <TableCell align="center">
-                        <Chip size="small" color={status === "Completed" ? "success" : "warning"} label={status} />
+                        <Typography variant="body2" sx={ellipsisTextSx}>
+                          {remain}
+                        </Typography>
                       </TableCell>
 
-                      <TableCell align="center">{peso(lineTotal)}</TableCell>
+                      <TableCell align="center">
+                        <Chip
+                          size="small"
+                          color={status === "Completed" ? "success" : "warning"}
+                          label={status}
+                        />
+                      </TableCell>
 
                       <TableCell align="center">
-                        <IconButton color="error" onClick={() => onRemoveLine(l.temp_id)}><MdDelete /></IconButton>
+                        <Typography variant="body2" sx={ellipsisTextSx}>
+                          {peso(lineTotal)}
+                        </Typography>
+                      </TableCell>
+
+                      <TableCell align="center">
+                        <Stack
+                          direction="row"
+                          spacing={0.5}
+                          justifyContent="center"
+                        >
+                          <Tooltip title="Edit">
+                            <IconButton
+                              color="primary"
+                              size="small"
+                              onClick={() => onEditLine && onEditLine(l)}
+                            >
+                              <MdEdit />
+                            </IconButton>
+                          </Tooltip>
+                          <Tooltip title="Remove">
+                            <IconButton
+                              color="error"
+                              onClick={() => onRemoveLine(l.temp_id)}
+                              size="small"
+                            >
+                              <MdDelete />
+                            </IconButton>
+                          </Tooltip>
+                        </Stack>
                       </TableCell>
                     </TableRow>
                   );
@@ -337,7 +523,9 @@ export default function PurchaseEditorLeft({
                   <TableRow>
                     <TableCell colSpan={8}>
                       <Box sx={{ p: 3 }}>
-                        <Typography color="text.secondary">No items yet. Add a product above.</Typography>
+                        <Typography color="text.secondary" align="center">
+                          No items yet. Add a product above.
+                        </Typography>
                       </Box>
                     </TableCell>
                   </TableRow>
@@ -346,8 +534,12 @@ export default function PurchaseEditorLeft({
                 {lines.length > 0 && (
                   <TableRow>
                     <TableCell colSpan={5} />
-                    <TableCell align="center"><b>Grand Total</b></TableCell>
-                    <TableCell align="center"><b>{peso(grandTotal)}</b></TableCell>
+                    <TableCell align="center">
+                      <b>Grand Total</b>
+                    </TableCell>
+                    <TableCell align="center">
+                      <b>{peso(grandTotal)}</b>
+                    </TableCell>
                     <TableCell />
                   </TableRow>
                 )}

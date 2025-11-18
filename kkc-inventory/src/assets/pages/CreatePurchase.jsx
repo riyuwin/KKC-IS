@@ -6,24 +6,41 @@ import CreatePurchaseComponent from "../components/CreatePurchaseComponent";
 import PurchaseOrderSummary from "../components/PurchaseOrderSummary";
 
 const API = PortDashboard;
-const peso = (n)=> (Number(n||0)).toLocaleString("en-PH",{style:"currency",currency:"PHP"});
+const peso = (n) =>
+  (Number(n || 0)).toLocaleString("en-PH", {
+    style: "currency",
+    currency: "PHP",
+  });
 
-const DS = [{ value:"Pending",label:"Pending"},{ value:"Completed",label:"Completed"}];
-const PS = [
-  { value: "Unpaid",         label: "Unpaid" },
-  { value: "Partially Paid", label: "Partially Paid" },
-  { value: "Fully Paid",     label: "Fully Paid" },
+const DS = [
+  { value: "Pending", label: "Pending" },
+  { value: "Completed", label: "Completed" },
 ];
 
-function todayYYYYMMDD(){ const d=new Date(); const pad=v=>String(v).padStart(2,"0"); return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; }
+const PS = [
+  { value: "Unpaid", label: "Unpaid" },
+  { value: "Partially Paid", label: "Partially Paid" },
+  { value: "Fully Paid", label: "Fully Paid" },
+];
+
+const VAT_OPTIONS = [
+  { value: 0, label: "No VAT" },
+  { value: 0.12, label: "VAT 12%" },
+];
+
+function todayYYYYMMDD() {
+  const d = new Date();
+  const pad = (v) => String(v).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
 
 export default function CreatePurchase() {
-  const [purchaseDate, setPurchaseDate] = useState(()=>todayYYYYMMDD());
+  const [purchaseDate, setPurchaseDate] = useState(() => todayYYYYMMDD());
   const [supplierId, setSupplierId] = useState("");
   const [paymentStatus, setPaymentStatus] = useState("Unpaid");
 
   const [suppliers, setSuppliers] = useState([]);
-  const [products, setProducts]   = useState([]);
+  const [products, setProducts] = useState([]);
 
   const [lines, setLines] = useState([]);
 
@@ -33,88 +50,224 @@ export default function CreatePurchase() {
   const [unit, setUnit] = useState("");
   const [recv, setRecv] = useState("");
 
-  const addQty   = Number(qty||0);
-  const addRecv  = Number(recv||0);
-  const addUnit  = Number(unit||0);
+  const [editingId, setEditingId] = useState(null);
+
+  // VAT
+  const [vatRate, setVatRate] = useState(0.12);
+
+  const addQty = Number(qty || 0);
+  const addRecv = Number(recv || 0);
+  const addUnit = Number(unit || 0);
   const addTotal = addQty * addUnit;
   const addRemain = Math.max(0, addQty - addRecv);
-  const addStatus = addQty>0 && addRecv===addQty ? "Completed" : "Pending";
+  const addStatus = addQty > 0 && addRecv === addQty ? "Completed" : "Pending";
 
-  useEffect(()=>{ (async()=>{
-    const [s,p]=await Promise.all([fetch(PortSuppliers), fetch(PortProducts)]);
-    setSuppliers(await s.json()); setProducts(await p.json());
-  })(); },[]);
+  useEffect(() => {
+    (async () => {
+      try {
+        const [sRes, pRes] = await Promise.all([
+          fetch(PortSuppliers, { credentials: "include" }),
+          fetch(PortProducts, { credentials: "include" }),
+        ]);
+
+        const [sJson, pJson] = await Promise.all([sRes.json(), pRes.json()]);
+
+        setSuppliers(Array.isArray(sJson) ? sJson : []);
+        setProducts(Array.isArray(pJson) ? pJson : []);
+      } catch (e) {
+        console.error("Failed to load suppliers/products:", e);
+        setSuppliers([]);
+        setProducts([]);
+      }
+    })();
+  }, []);
 
   const productsForSupplier = useMemo(
-    ()=> supplierId ? products.filter(p => String(p.supplier_id) === String(supplierId)) : [],
+    () =>
+      supplierId
+        ? products.filter(
+            (p) => String(p.supplier_id) === String(supplierId)
+          )
+        : [],
     [products, supplierId]
   );
 
   const grandTotal = useMemo(
-    ()=> lines.reduce((sum,l)=> sum + Number(l.quantity||0)*Number(l.unit_cost||0), 0),
+    () =>
+      lines.reduce(
+        (sum, l) =>
+          sum + Number(l.quantity || 0) * Number(l.unit_cost || 0),
+        0
+      ),
     [lines]
   );
+
   const allCompleted = useMemo(
-    ()=> lines.length>0 && lines.every(l => Number(l.qty_received||0) >= Number(l.quantity||0)),
+    () =>
+      lines.length > 0 &&
+      lines.every(
+        (l) =>
+          Number(l.qty_received || 0) >= Number(l.quantity || 0)
+      ),
     [lines]
   );
   const globalStatus = allCompleted ? "Completed" : "Pending";
 
-  const totalQtyOrdered = useMemo(()=> lines.reduce((s,l)=> s + Number(l.quantity||0), 0), [lines]);
-  const totalQtyReceived = useMemo(()=> lines.reduce((s,l)=> s + Math.min(Number(l.qty_received||0), Number(l.quantity||0)), 0), [lines]);
+  const totalQtyOrdered = useMemo(
+    () => lines.reduce((s, l) => s + Number(l.quantity || 0), 0),
+    [lines]
+  );
+  const totalQtyReceived = useMemo(
+    () =>
+      lines.reduce((s, l) => {
+        const q = Number(l.quantity || 0);
+        const r = Math.min(Number(l.qty_received || 0), q);
+        return s + r;
+      }, 0),
+    [lines]
+  );
   const totalQtyOutstanding = Math.max(0, totalQtyOrdered - totalQtyReceived);
-  const outstandingValue = useMemo(()=> lines.reduce((s,l)=>{
-    const q=Number(l.quantity||0), r=Math.min(Number(l.qty_received||0), q), u=Number(l.unit_cost||0);
-    return s + Math.max(0, q-r) * u;
-  },0), [lines]);
 
-  const VAT_RATE = 0.12;
-  const estVat = grandTotal * VAT_RATE;
+  const outstandingValue = useMemo(
+    () =>
+      lines.reduce((s, l) => {
+        const q = Number(l.quantity || 0);
+        const r = Math.min(Number(l.qty_received || 0), q);
+        const u = Number(l.unit_cost || 0);
+        return s + Math.max(0, q - r) * u;
+      }, 0),
+    [lines]
+  );
+
+  const estVat = grandTotal * (vatRate || 0);
   const estTotalWithVat = grandTotal + estVat;
 
-  function onSelectProduct(e){
-    const val=e.target.value;
+  function resetAddForm() {
+    setPId("");
+    setQty("");
+    setUnit("");
+    setRecv("");
+  }
+
+  function onSelectProduct(e) {
+    const val = e.target.value;
     setPId(val);
-    const prod = productsForSupplier.find(p => String(p.product_id) === String(val));
+    const prod = productsForSupplier.find(
+      (p) => String(p.product_id) === String(val)
+    );
     setUnit(prod?.cost_price ?? "");
   }
 
-  function addLine(){
+  function addOrUpdateLine() {
     if (!pId || !addQty) return;
-    const prod = productsForSupplier.find(p => String(p.product_id) === String(pId));
-    setLines(ls=>[...ls, {
-      temp_id: crypto.randomUUID(),
-      product_id: Number(pId),
-      product_name: prod?.product_name || `#${pId}`,
-      quantity: addQty,
-      unit_cost: unit==="" ? Number(prod?.cost_price||0) : addUnit,
-      qty_received: addRecv,
-    }]);
-    setPId(""); setQty(""); setUnit(""); setRecv("");
+
+    const prod = productsForSupplier.find(
+      (p) => String(p.product_id) === String(pId)
+    );
+
+    if (editingId) {
+      // update existing line
+      setLines((ls) =>
+        ls.map((l) =>
+          l.temp_id === editingId
+            ? {
+                ...l,
+                product_id: Number(pId),
+                product_name: prod?.product_name || `#${pId}`,
+                quantity: addQty,
+                unit_cost: unit === "" ? Number(prod?.cost_price || 0) : addUnit,
+                qty_received: addRecv,
+              }
+            : l
+        )
+      );
+    } else {
+      // add new line
+      setLines((ls) => [
+        ...ls,
+        {
+          temp_id: crypto.randomUUID(),
+          product_id: Number(pId),
+          product_name: prod?.product_name || `#${pId}`,
+          quantity: addQty,
+          unit_cost: unit === "" ? Number(prod?.cost_price || 0) : addUnit,
+          qty_received: addRecv,
+        },
+      ]);
+    }
+
+    setEditingId(null);
+    resetAddForm();
   }
 
-  function updateCell(id,key,val){ setLines(ls=>ls.map(l=> l.temp_id===id ? {...l, [key]:val} : l)); }
-  function removeLine(id){ setLines(ls=>ls.filter(l=> l.temp_id!==id)); }
+  function updateCell(id, key, val) {
+    setLines((ls) =>
+      ls.map((l) => (l.temp_id === id ? { ...l, [key]: val } : l))
+    );
+  }
 
-  async function save(){
-    if (!purchaseDate || !supplierId || lines.length===0) return;
+  function removeLine(id) {
+    setLines((ls) => ls.filter((l) => l.temp_id !== id));
+    setEditingId((curr) => {
+      if (curr === id) {
+        resetAddForm();
+        return null;
+      }
+      return curr;
+    });
+  }
+
+  function startEditLine(line) {
+    setEditingId(line.temp_id);
+    setPId(String(line.product_id));
+    setQty(
+      line.quantity === "" || line.quantity === null || line.quantity === undefined
+        ? ""
+        : String(line.quantity)
+    );
+    setRecv(
+      line.qty_received === "" || line.qty_received === null || line.qty_received === undefined
+        ? ""
+        : String(line.qty_received)
+    );
+    setUnit(
+      line.unit_cost === "" || line.unit_cost === null
+        ? ""
+        : String(line.unit_cost)
+    );
+  }
+
+  async function save() {
+    if (!purchaseDate || !supplierId || lines.length === 0) return;
+
     const payload = {
       purchase_date: purchaseDate,
       supplier_id: supplierId,
       payment_status: paymentStatus,
-      items: lines.map(l=>({
-        product_id:Number(l.product_id),
-        quantity:Number(l.quantity||0),
-        unit_cost:Number(l.unit_cost||0),
-        qty_received:Number(l.qty_received||0)
-      }))
+      items: lines.map((l) => ({
+        product_id: Number(l.product_id),
+        quantity: Number(l.quantity || 0),
+        unit_cost: Number(l.unit_cost || 0),
+        qty_received: Number(l.qty_received || 0),
+      })),
     };
-    const r = await fetch(`${API}/purchases/bulk`, {
-      method:"POST", headers:{ "Content-Type":"application/json" }, credentials:"include", body:JSON.stringify(payload)
-    });
-    const j = await r.json();
-    if (!r.ok) return alert(j?.error || "Failed to save purchase");
-    window.history.back();
+
+    try {
+      const r = await fetch(`${API}/purchases/bulk`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(payload),
+      });
+      const j = await r.json();
+      if (!r.ok) {
+        return alert(j?.error || "Failed to save purchase");
+      }
+      window.history.back();
+    } catch (e) {
+      console.error("Failed to save purchase:", e);
+      alert("Failed to save purchase");
+    }
   }
 
   const fieldSx = {
@@ -122,11 +275,17 @@ export default function CreatePurchase() {
     "& .MuiFormHelperText-root": { minHeight: 20 },
   };
 
-  const pageSx = { p:{ xs:2, sm:3 }, bgcolor:"#f9fafb", minHeight:"100vh" };
-  const contentSx = { maxWidth:1300, mx:"auto" };
+  const pageSx = {
+    p: { xs: 2, sm: 3 },
+    bgcolor: "#f9fafb",
+    minHeight: "100vh",
+  };
+  const contentSx = { maxWidth: 1300, mx: "auto" };
 
   const supplierName = supplierId
-    ? (suppliers.find(s=>String(s.supplier_id)===String(supplierId))?.supplier_name || "")
+    ? suppliers.find(
+        (s) => String(s.supplier_id) === String(s.supplierId)
+      )?.supplier_name || ""
     : "";
 
   return (
@@ -142,40 +301,68 @@ export default function CreatePurchase() {
           spacing={3}
           alignItems="flex-start"
           sx={{
-            flexWrap: "nowrap",          // never wrap to next line
-            overflowX: "auto",           // allow horizontal scroll on very small screens
-            pb: 1                         // avoid scrollbar overlay
+            flexWrap: "nowrap", // never wrap to next line
+            overflowX: "auto", // allow horizontal scroll on very small screens
+            pb: 1, // avoid scrollbar overlay
           }}
         >
           {/* LEFT column (editor) */}
           <Grid item xs={8} md={8} lg={9}>
             <CreatePurchaseComponent
               // header
-              purchaseDate={purchaseDate} setPurchaseDate={setPurchaseDate}
-              supplierId={supplierId} setSupplierId={(v)=>{ setSupplierId(v); setLines([]); setPId(""); }}
-              paymentStatus={paymentStatus} setPaymentStatus={setPaymentStatus}
-              suppliers={suppliers} productsForSupplier={productsForSupplier}
+              purchaseDate={purchaseDate}
+              setPurchaseDate={setPurchaseDate}
+              supplierId={supplierId}
+              setSupplierId={(v) => {
+                setSupplierId(v);
+                setEditingId(null);
+                resetAddForm();
+              }}
+              paymentStatus={paymentStatus}
+              setPaymentStatus={setPaymentStatus}
+              suppliers={suppliers}
+              productsForSupplier={productsForSupplier}
               globalStatus={globalStatus}
-              PS={PS} DS={DS}
-
+              PS={PS}
+              DS={DS}
+              vatRate={vatRate}
+              setVatRate={setVatRate}
+              vatOptions={VAT_OPTIONS}
               // add-line
-              pId={pId} qty={qty} unit={unit} recv={recv}
+              pId={pId}
+              qty={qty}
+              unit={unit}
+              recv={recv}
               onSelectProduct={onSelectProduct}
-              setQty={setQty} setUnit={setUnit} setRecv={setRecv}
-              addTotal={addTotal} addRemain={addRemain} addStatus={addStatus}
-              onAddLine={addLine}
-
+              setQty={setQty}
+              setUnit={setUnit}
+              setRecv={setRecv}
+              addTotal={addTotal}
+              addRemain={addRemain}
+              addStatus={addStatus}
+              onAddLine={addOrUpdateLine}
+              // editing
+              editingId={editingId}
+              onEditLine={startEditLine}
               // table
-              lines={lines} onUpdateCell={updateCell} onRemoveLine={removeLine}
+              lines={lines}
+              onUpdateCell={updateCell}
+              onRemoveLine={removeLine}
               grandTotal={grandTotal}
-
-              fieldSx={fieldSx} peso={peso}
+              fieldSx={fieldSx}
+              peso={peso}
             />
 
             {/* Actions */}
             <Stack direction="row" spacing={2} sx={{ mt: 3 }}>
-              <Button variant="outlined" onClick={()=>window.history.back()}>Cancel</Button>
-              <Button variant="contained" onClick={save} disabled={!purchaseDate || !supplierId || !lines.length}>
+              <Button variant="outlined" onClick={() => window.history.back()}>
+                Cancel
+              </Button>
+              <Button
+                variant="contained"
+                onClick={save}
+                disabled={!purchaseDate || !supplierId || !lines.length}
+              >
                 Save Purchase
               </Button>
             </Stack>
@@ -192,7 +379,7 @@ export default function CreatePurchase() {
               top: 24,
               alignSelf: "flex-start",
               height: "fit-content",
-              minWidth: 300           
+              minWidth: 300,
             }}
           >
             <PurchaseOrderSummary
@@ -210,6 +397,7 @@ export default function CreatePurchase() {
               outstandingValue={outstandingValue}
               lines={lines}
               peso={peso}
+              vatRate={vatRate}
             />
           </Grid>
         </Grid>

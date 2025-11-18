@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Box, Paper, Typography, Button, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, IconButton, CircularProgress, Tooltip, Chip, Stack } from "@mui/material";
+import { Box, Paper, Typography, Button, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, IconButton, CircularProgress, Tooltip, Chip, Stack, } from "@mui/material";
 import { MdAdd, MdVisibility, MdEdit, MdDelete } from "react-icons/md";
 import PurchasesCRUD from "../logics/purchases/PurchasesCRUD";
 import SortableHeader, { getComparator, stableSort } from "../components/SortableHeader";
@@ -13,7 +13,11 @@ function peso(n) {
   if (n === "" || n === null || typeof n === "undefined") return "";
   const num = Number(n);
   if (Number.isNaN(num)) return n;
-  return num.toLocaleString("en-PH", { style: "currency", currency: "PHP", minimumFractionDigits: 2 });
+  return num.toLocaleString("en-PH", {
+    style: "currency",
+    currency: "PHP",
+    minimumFractionDigits: 2,
+  });
 }
 
 function dateFormat(v) {
@@ -24,15 +28,22 @@ function dateFormat(v) {
     if (plain) {
       const [_, y, mo, d] = plain;
       const dt = new Date(Number(y), Number(mo) - 1, Number(d));
-      return dt.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+      return dt.toLocaleDateString("en-US", {
+        month: "long",
+        day: "numeric",
+        year: "numeric",
+      });
     }
   }
 
   const dt = new Date(v);
   if (Number.isNaN(dt.getTime())) return String(v);
-  return dt.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+  return dt.toLocaleDateString("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
 }
-
 
 function Purchases() {
   const [rows, setRows] = useState([]);
@@ -63,13 +74,19 @@ function Purchases() {
 
   async function loadMeta() {
     try {
-      const [sres, pres] = await Promise.all([fetch(PortSuppliers), fetch(PortProducts)]);
-      const [sups, prods] = await Promise.all([sres.json(), pres.json()]);
-      setSuppliers(Array.isArray(sups) ? sups : []);
-      setProducts(Array.isArray(prods) ? prods : []);
+      const [sres, pres] = await Promise.all([
+        fetch(PortSuppliers, { credentials: "include" }),
+        fetch(PortProducts, { credentials: "include" }),
+      ]);
+
+      const [supsJson, prodsJson] = await Promise.all([sres.json(), pres.json()]);
+
+      setSuppliers(Array.isArray(supsJson) ? supsJson : []);
+      setProducts(Array.isArray(prodsJson) ? prodsJson : []);
     } catch (e) {
-      // fetchSuppliers/Products
-      console.error(e);
+      console.error("Failed to load suppliers/products:", e);
+      setSuppliers([]);
+      setProducts([]);
     }
   }
 
@@ -83,21 +100,35 @@ function Purchases() {
     }
   }
 
-  useEffect(() => { loadMeta(); }, []);
-  useEffect(() => { load(); }, [searchNow]);
+  useEffect(() => {
+    loadMeta();
+  }, []);
+  useEffect(() => {
+    load();
+  }, [searchNow]);
 
   const computedRows = useMemo(
-    () => rows.map(r => ({ ...r, display_total_cost: r.total_cost ?? r.purchase_total_cost ?? 0 })),
+    () =>
+      rows.map((r) => ({
+        ...r,
+        display_total_cost: r.total_cost ?? r.purchase_total_cost ?? 0,
+      })),
     [rows]
   );
+
   const sortedRows = useMemo(
     () => stableSort(computedRows, getComparator(order, orderBy)),
     [computedRows, order, orderBy]
   );
 
   const headerCellSx = {
-    py: 3.0, px: 0.75, fontSize: "0.90rem", fontWeight: 700,
-    bgcolor: "#706f6fff", textAlign: "center", color: "white",
+    py: 3.0,
+    px: 0.75,
+    fontSize: "0.90rem",
+    fontWeight: 700,
+    bgcolor: "#706f6fff",
+    textAlign: "center",
+    color: "white",
   };
   const bodyCellSx = {
     textAlign: "center",
@@ -116,8 +147,17 @@ function Purchases() {
     px: 1.25,
   };
 
-  const closeDialog = () => { setOpen(false); setSelectedId(null); setFormData({}); };
-  const openCreate = () => { setDialogMode("create"); setSelectedId(null); setFormData({}); setOpen(true); };
+  const closeDialog = () => {
+    setOpen(false);
+    setSelectedId(null);
+    setFormData({});
+  };
+  const openCreate = () => {
+    setDialogMode("create");
+    setSelectedId(null);
+    setFormData({});
+    setOpen(true);
+  };
   const openView = (row) => {
     setDialogMode("view");
     setSelectedId(row.purchase_id);
@@ -156,20 +196,47 @@ function Purchases() {
     if (!res?.cancelled) await load();
   };
 
+  // widths for colgroup 
+  const colWidths = [
+    "9%", // Date
+    "10%", // Supplier
+    "11%", // Product
+    "10%", // Purchased
+    "10%", // Received
+    "9%", // Remaining
+    "7%", // Unit ₱
+    "8%", // Total ₱
+    "10%", // Order
+    "8%", // Payment
+    "8%", // Actions
+  ];
+
   return (
     <Box sx={{ p: 2, fontFamily: "Poppins, sans-serif" }}>
       <Typography variant="h3" sx={{ fontWeight: 700, mb: 5 }}>
         Purchase
       </Typography>
 
-      <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2, px: 1 }} spacing={2}>
+      <Stack
+        direction="row"
+        alignItems="center"
+        justifyContent="space-between"
+        sx={{ mb: 2, px: 1 }}
+        spacing={2}
+      >
         <SearchBar search={search} onSearchChange={setSearch} placeholder="Search purchases..." />
         <Button
           component={Link}
           to="/purchases/new"
           variant="contained"
           startIcon={<MdAdd />}
-          sx={{ bgcolor: "#E67600", "&:hover": { bgcolor: "#f99f3fff" }, textTransform: "none", fontWeight: 600, borderRadius: 2 }}
+          sx={{
+            bgcolor: "#E67600",
+            "&:hover": { bgcolor: "#f99f3fff" },
+            textTransform: "none",
+            fontWeight: 600,
+            borderRadius: 2,
+          }}
         >
           Add Purchase
         </Button>
@@ -178,38 +245,100 @@ function Purchases() {
       <Paper elevation={1} sx={{ borderRadius: 2, bgcolor: "transparent", boxShadow: "none" }}>
         <TableContainer
           component={Paper}
-          sx={{ borderRadius: 2, border: "1px solid #ddd", boxShadow: "0px 2px 8px rgba(0,0,0,0.1)", bgcolor: "background.paper" }}
+          sx={{
+            borderRadius: 2,
+            border: "1px solid #ddd",
+            boxShadow: "0px 2px 8px rgba(0,0,0,0.1)",
+            bgcolor: "background.paper",
+          }}
         >
-          <TablePager data={sortedRows} resetOn={`${order}-${orderBy}-${searchNow}`} initialRowsPerPage={5} align="left">
+          <TablePager
+            data={sortedRows}
+            resetOn={`${order}-${orderBy}-${searchNow}`}
+            initialRowsPerPage={5}
+            align="left"
+          >
             {({ pagedRows, Pagination }) => (
               <>
                 <Table size="small" sx={{ tableLayout: "fixed" }}>
                   <colgroup>
-                    <col style={{ width: "9%" }} />  {/* Date */}
-                    <col style={{ width: "10%" }} /> {/* Supplier */}
-                    <col style={{ width: "11%" }} /> {/* Product */}
-                    <col style={{ width: "10%" }} /> {/* Purchased */}
-                    <col style={{ width: "10%" }} /> {/* Received */}
-                    <col style={{ width: "9%" }} />  {/* Remaining */}
-                    <col style={{ width: "7%" }} />  {/* Unit ₱ */}
-                    <col style={{ width: "8%" }} />  {/* Total ₱ */}
-                    <col style={{ width: "10%" }} /> {/* Order */}
-                    <col style={{ width: "8%" }} />  {/* Payment */}
-                    <col style={{ width: "8%" }} />  {/* Actions */}
+                    {colWidths.map((w, idx) => (
+                      <col key={idx} style={{ width: w }} />
+                    ))}
                   </colgroup>
 
                   <TableHead sx={{ "& .MuiTableCell-root": headerCellSx }}>
                     <TableRow>
-                      <SortableHeader id="purchase_date" label="Date" order={order} orderBy={orderBy} onSort={handleSort} />
-                      <SortableHeader id="supplier_name" label="Supplier" order={order} orderBy={orderBy} onSort={handleSort} />
-                      <SortableHeader id="product_name" label="Product" order={order} orderBy={orderBy} onSort={handleSort} />
-                      <SortableHeader id="quantity" label="Purchased" order={order} orderBy={orderBy} onSort={handleSort} />
-                      <SortableHeader id="qty_received" label="Received" order={order} orderBy={orderBy} onSort={handleSort} />
-                      <SortableHeader id="remaining" label="Remaining" order={order} orderBy={orderBy} onSort={handleSort} />
-                      <SortableHeader id="unit_cost" label="Unit ₱" order={order} orderBy={orderBy} onSort={handleSort} />
-                      <SortableHeader id="total_cost" label="Total ₱" order={order} orderBy={orderBy} onSort={handleSort} />
-                      <SortableHeader id="purchase_status" label="Order" order={order} orderBy={orderBy} onSort={handleSort} />
-                      <SortableHeader id="purchase_payment_status" label="Payment" order={order} orderBy={orderBy} onSort={handleSort} />
+                      <SortableHeader
+                        id="purchase_date"
+                        label="Date"
+                        order={order}
+                        orderBy={orderBy}
+                        onSort={handleSort}
+                      />
+                      <SortableHeader
+                        id="supplier_name"
+                        label="Supplier"
+                        order={order}
+                        orderBy={orderBy}
+                        onSort={handleSort}
+                      />
+                      <SortableHeader
+                        id="product_name"
+                        label="Product"
+                        order={order}
+                        orderBy={orderBy}
+                        onSort={handleSort}
+                      />
+                      <SortableHeader
+                        id="quantity"
+                        label="Purchased"
+                        order={order}
+                        orderBy={orderBy}
+                        onSort={handleSort}
+                      />
+                      <SortableHeader
+                        id="qty_received"
+                        label="Received"
+                        order={order}
+                        orderBy={orderBy}
+                        onSort={handleSort}
+                      />
+                      <SortableHeader
+                        id="remaining"
+                        label="Remaining"
+                        order={order}
+                        orderBy={orderBy}
+                        onSort={handleSort}
+                      />
+                      <SortableHeader
+                        id="unit_cost"
+                        label="Unit ₱"
+                        order={order}
+                        orderBy={orderBy}
+                        onSort={handleSort}
+                      />
+                      <SortableHeader
+                        id="total_cost"
+                        label="Total ₱"
+                        order={order}
+                        orderBy={orderBy}
+                        onSort={handleSort}
+                      />
+                      <SortableHeader
+                        id="purchase_status"
+                        label="Order"
+                        order={order}
+                        orderBy={orderBy}
+                        onSort={handleSort}
+                      />
+                      <SortableHeader
+                        id="purchase_payment_status"
+                        label="Payment"
+                        order={order}
+                        orderBy={orderBy}
+                        onSort={handleSort}
+                      />
                       <TableCell sx={headerCellSx}>Actions</TableCell>
                     </TableRow>
                   </TableHead>
@@ -218,7 +347,13 @@ function Purchases() {
                     {loading ? (
                       <TableRow>
                         <TableCell colSpan={11}>
-                          <Stack direction="row" spacing={1} justifyContent="center" alignItems="center" py={2}>
+                          <Stack
+                            direction="row"
+                            spacing={1}
+                            justifyContent="center"
+                            alignItems="center"
+                            py={2}
+                          >
                             <CircularProgress size={18} />
                             <Typography variant="body2">Loading…</Typography>
                           </Stack>
@@ -239,28 +374,51 @@ function Purchases() {
                           <TableCell title={row.supplier_name}>{row.supplier_name}</TableCell>
                           <TableCell title={row.product_name}>{row.product_name}</TableCell>
                           <TableCell title={String(row.quantity)}>{row.quantity}</TableCell>
-                          <TableCell title={String(row.qty_received)}>{row.qty_received}</TableCell>
+                          <TableCell title={String(row.qty_received)}>
+                            {row.qty_received}
+                          </TableCell>
                           <TableCell title={String(row.remaining)}>{row.remaining}</TableCell>
-                          <TableCell title={peso(row.unit_cost)}>{peso(row.unit_cost)}</TableCell>
-                          <TableCell title={peso(row.total_cost)}>{peso(row.total_cost)}</TableCell>
+                          <TableCell title={peso(row.unit_cost)}>
+                            {peso(row.unit_cost)}
+                          </TableCell>
+                          <TableCell title={peso(row.total_cost)}>
+                            {peso(row.total_cost)}
+                          </TableCell>
                           <TableCell sx={wrapCellSx}>
-                            <Chip size="small" color={row.remaining === 0 ? "success" : "warning"} label={row.purchase_status} sx={{ px: 0.9, maxWidth: "none" }} />
+                            <Chip
+                              size="small"
+                              color={row.remaining === 0 ? "success" : "warning"}
+                              label={row.purchase_status}
+                              sx={{ px: 0.9, maxWidth: "none" }}
+                            />
                           </TableCell>
                           <TableCell sx={wrapCellSx}>{row.purchase_payment_status}</TableCell>
                           <TableCell>
                             <Stack direction="row" justifyContent="center" spacing={-0.4}>
                               <Tooltip title="View">
-                                <IconButton size="small" color="success" onClick={() => openView(row)}>
+                                <IconButton
+                                  size="small"
+                                  color="success"
+                                  onClick={() => openView(row)}
+                                >
                                   <MdVisibility style={{ fontSize: 22 }} />
                                 </IconButton>
                               </Tooltip>
                               <Tooltip title="Edit">
-                                <IconButton size="small" color="primary" onClick={() => openEdit(row)}>
+                                <IconButton
+                                  size="small"
+                                  color="primary"
+                                  onClick={() => openEdit(row)}
+                                >
                                   <MdEdit style={{ fontSize: 22 }} />
                                 </IconButton>
                               </Tooltip>
                               <Tooltip title="Delete">
-                                <IconButton size="small" color="error" onClick={() => handleDelete(row)}>
+                                <IconButton
+                                  size="small"
+                                  color="error"
+                                  onClick={() => handleDelete(row)}
+                                >
                                   <MdDelete style={{ fontSize: 22 }} />
                                 </IconButton>
                               </Tooltip>

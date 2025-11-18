@@ -593,18 +593,9 @@ app.delete('/suppliers/:id', (req, res) => {
 // ====== PURCHASES HELPERS ======
 function recomputePurchaseStatus(quantity, qty_received) {
     const remaining = Math.max(0, Number(quantity || 0) - Number(qty_received || 0));
-    return remaining === 0 ? 'Completed' : 'Pending';
-}
-function computeStockStatus(stock) { // reuse if not in scope here
-    if (!Number.isFinite(stock) || stock <= 0) return 'Out of Stock';
-    if (stock <= 10) return 'Low Stock';
-    return 'In Stock';
+    return remaining === 0 ? "Completed" : "Pending";
 }
 
-function toInt(v) {
-    const n = Number(v);
-    return Number.isFinite(n) ? Math.trunc(n) : 0;
-}
 function toMoney(v) {
     const n = Number(v);
     return Number.isFinite(n) ? n : 0;
@@ -612,8 +603,8 @@ function toMoney(v) {
 
 // Record stock movement and update product stock (for received qty only)
 function applyReceivedToStock({ product_id, qty_received_delta, purchase_id }, cb) {
-    const delta = toInt(qty_received_delta);         // <— force integer here
-    const pid = toInt(product_id);                 // <— ensure ID is numeric
+    const delta = toInt(qty_received_delta);
+    const pid = toInt(product_id);
 
     if (!Number.isFinite(delta) || delta === 0) return cb?.(null);
 
@@ -621,30 +612,64 @@ function applyReceivedToStock({ product_id, qty_received_delta, purchase_id }, c
         if (err) return cb?.(err);
 
         conn.beginTransaction((err) => {
-            if (err) { conn.release(); return cb?.(err); }
+            if (err) {
+                conn.release();
+                return cb?.(err);
+            }
 
             conn.query(
-                'UPDATE products SET stock = stock + ? WHERE product_id = ?',
-                [delta, pid],                                 // <— guaranteed integer
+                "UPDATE products SET stock = stock + ? WHERE product_id = ?",
+                [delta, pid],
                 (e) => {
-                    if (e) return conn.rollback(() => { conn.release(); cb?.(e); });
+                    if (e) {
+                        return conn.rollback(() => {
+                            conn.release();
+                            cb?.(e);
+                        });
+                    }
 
                     conn.query(
-                        'INSERT INTO stock_movements (product_id, quantity, movement_type, purchase_id) VALUES (?,?,?,?)',
-                        [pid, delta, 'purchase', toInt(purchase_id)],
+                        "INSERT INTO stock_movements (product_id, quantity, movement_type, purchase_id) VALUES (?,?,?,?)",
+                        [pid, delta, "purchase", toInt(purchase_id)],
                         (e2) => {
-                            if (e2) return conn.rollback(() => { conn.release(); cb?.(e2); });
-
-                            conn.query('SELECT stock FROM products WHERE product_id=?', [pid], (e3, rows) => {
-                                if (e3) return conn.rollback(() => { conn.release(); cb?.(e3); });
-                                const stock = toInt(rows?.[0]?.stock);
-                                const ss = computeStockStatus(stock);
-
-                                conn.query('UPDATE products SET stock_status=? WHERE product_id=?', [ss, pid], (e4) => {
-                                    if (e4) return conn.rollback(() => { conn.release(); cb?.(e4); });
-                                    conn.commit((e5) => { conn.release(); cb?.(e5 || null); });
+                            if (e2) {
+                                return conn.rollback(() => {
+                                    conn.release();
+                                    cb?.(e2);
                                 });
-                            });
+                            }
+
+                            conn.query(
+                                "SELECT stock FROM products WHERE product_id=?",
+                                [pid],
+                                (e3, rows) => {
+                                    if (e3) {
+                                        return conn.rollback(() => {
+                                            conn.release();
+                                            cb?.(e3);
+                                        });
+                                    }
+                                    const stock = toInt(rows?.[0]?.stock);
+                                    const ss = computeStockStatus(stock);
+
+                                    conn.query(
+                                        "UPDATE products SET stock_status=? WHERE product_id=?",
+                                        [ss, pid],
+                                        (e4) => {
+                                            if (e4) {
+                                                return conn.rollback(() => {
+                                                    conn.release();
+                                                    cb?.(e4);
+                                                });
+                                            }
+                                            conn.commit((e5) => {
+                                                conn.release();
+                                                cb?.(e5 || null);
+                                            });
+                                        }
+                                    );
+                                }
+                            );
                         }
                     );
                 }
@@ -654,46 +679,51 @@ function applyReceivedToStock({ product_id, qty_received_delta, purchase_id }, c
 }
 
 // ====== PURCHASES API ======
+
 // GET /purchases?search=...
-app.get('/purchases', (req, res) => {
-    const search = (req.query.search || '').trim();
+app.get("/purchases", (req, res) => {
+    const search = (req.query.search || "").trim();
     const like = `%${search}%`;
 
     const sql = `
-    SELECT 
-      pu.purchase_id,
-      pu.purchase_date,
-      pu.supplier_id,
-      s.supplier_name,
-      pu.total_cost AS purchase_total_cost,
-      pu.purchase_status,
-      pu.purchase_payment_status,
+        SELECT 
+          pu.purchase_id,
+          pu.purchase_date,
+          pu.supplier_id          AS header_supplier_id,
+          s.supplier_name         AS header_supplier_name,
+          pu.total_cost           AS purchase_total_cost,
+          pu.purchase_status,
+          pu.purchase_payment_status,
 
-      pi.purchase_item_id,
-      pi.product_id,
-      p.product_name,
-      p.sku,
-      pi.quantity,
-      pi.qty_received,
-      (pi.quantity - pi.qty_received) AS remaining,
-      pi.unit_cost,
-      pi.total_cost
-    FROM purchases pu
-    JOIN suppliers s ON s.supplier_id = pu.supplier_id
-    JOIN purchase_items pi ON pi.purchase_id = pu.purchase_id
-    JOIN products p ON p.product_id = pi.product_id
-    ${search ? 'WHERE s.supplier_name LIKE ? OR p.product_name LIKE ?' : ''}
-    ORDER BY pu.created_at DESC, pu.purchase_id DESC
-  `;
-    const params = search ? [like, like] : [];
+          pi.purchase_item_id,
+          pi.product_id,
+          pi.supplier_id          AS item_supplier_id,
+          si.supplier_name        AS item_supplier_name,
+          p.product_name,
+          p.sku,
+          pi.quantity,
+          pi.qty_received,
+          (pi.quantity - pi.qty_received) AS remaining,
+          pi.unit_cost,
+          pi.total_cost,
+          pi.created_at           AS purchase_item_created_at
+        FROM purchases pu
+        LEFT JOIN suppliers s  ON s.supplier_id  = pu.supplier_id
+        JOIN purchase_items pi ON pi.purchase_id = pu.purchase_id
+        JOIN products p        ON p.product_id   = pi.product_id
+        LEFT JOIN suppliers si ON si.supplier_id = pi.supplier_id
+        ${search ? "WHERE s.supplier_name LIKE ? OR si.supplier_name LIKE ? OR p.product_name LIKE ?" : ""}
+        ORDER BY pu.created_at DESC, pu.purchase_id DESC
+    `;
+    const params = search ? [like, like, like] : [];
     db.query(sql, params, (err, rows) => {
         if (err) return res.status(500).json({ error: err.message });
         res.json(rows);
     });
 });
 
-// POST /purchases  (create one purchase + one item)
-app.post('/purchases', (req, res) => {
+// POST /purchases  (create ONE purchase + ONE item)
+app.post("/purchases", (req, res) => {
     const {
         purchase_date,
         supplier_id,
@@ -701,7 +731,7 @@ app.post('/purchases', (req, res) => {
         quantity,
         unit_cost,
         qty_received = 0,
-        purchase_payment_status = 'Unpaid'
+        purchase_payment_status = "Unpaid",
     } = req.body;
 
     const qty = toInt(quantity);
@@ -711,41 +741,88 @@ app.post('/purchases', (req, res) => {
     const purchase_status = recomputePurchaseStatus(qty, recv);
 
     if (!purchase_date || !supplier_id || !product_id || qty <= 0 || ucost < 0) {
-        return res.status(400).json({ error: 'Missing or invalid fields.' });
+        return res.status(400).json({ error: "Missing or invalid fields." });
     }
 
     getSessionWarehouseId(req, (eWh, whId) => {
-        if (eWh || !whId) return res.status(401).json({ error: 'No warehouse for session' });
+        if (eWh || !whId)
+            return res.status(401).json({ error: "No warehouse for session" });
 
         db.getConnection((err, conn) => {
             if (err) return res.status(500).json({ error: err.message });
 
             conn.beginTransaction((err) => {
-                if (err) { conn.release(); return res.status(500).json({ error: err.message }); }
+                if (err) {
+                    conn.release();
+                    return res.status(500).json({ error: err.message });
+                }
 
                 conn.query(
-                    `INSERT INTO purchases
-             (purchase_date, warehouse_id, supplier_id, total_cost, purchase_status, purchase_payment_status)
-           VALUES (?,?,?,?,?,?)`,
-                    [purchase_date, whId, supplier_id, item_total, purchase_status, purchase_payment_status],
+                    `
+                    INSERT INTO purchases
+                        (purchase_date, warehouse_id, supplier_id, total_cost, purchase_status, purchase_payment_status)
+                    VALUES (?,?,?,?,?,?)
+                `,
+                    [
+                        purchase_date,
+                        whId,
+                        supplier_id,
+                        item_total,
+                        purchase_status,
+                        purchase_payment_status,
+                    ],
                     (e, result) => {
-                        if (e) return conn.rollback(() => { conn.release(); res.status(500).json({ error: e.message }); });
+                        if (e) {
+                            return conn.rollback(() => {
+                                conn.release();
+                                res.status(500).json({ error: e.message });
+                            });
+                        }
 
                         const newPurchaseId = result.insertId;
 
                         conn.query(
-                            `INSERT INTO purchase_items (purchase_id, product_id, quantity, unit_cost, total_cost, qty_received)
-               VALUES (?,?,?,?,?,?)`,
-                            [newPurchaseId, product_id, qty, ucost, item_total, recv],
+                            `
+                            INSERT INTO purchase_items
+                                (purchase_id, product_id, supplier_id, quantity, unit_cost, total_cost, qty_received)
+                            VALUES (?,?,?,?,?,?,?)
+                        `,
+                            [
+                                newPurchaseId,
+                                product_id,
+                                supplier_id,
+                                qty,
+                                ucost,
+                                item_total,
+                                recv,
+                            ],
                             (e2) => {
-                                if (e2) return conn.rollback(() => { conn.release(); res.status(500).json({ error: e2.message }); });
+                                if (e2) {
+                                    return conn.rollback(() => {
+                                        conn.release();
+                                        res.status(500).json({ error: e2.message });
+                                    });
+                                }
 
                                 conn.commit((e3) => {
                                     conn.release();
-                                    applyReceivedToStock({ product_id, qty_received_delta: recv, purchase_id: newPurchaseId }, (e4) => {
-                                        if (e4) return res.status(500).json({ error: e4.message });
-                                        res.json({ message: 'Purchase created', purchase_id: newPurchaseId });
-                                    });
+                                    applyReceivedToStock(
+                                        {
+                                            product_id,
+                                            qty_received_delta: recv,
+                                            purchase_id: newPurchaseId,
+                                        },
+                                        (e4) => {
+                                            if (e4)
+                                                return res
+                                                    .status(500)
+                                                    .json({ error: e4.message });
+                                            res.json({
+                                                message: "Purchase created",
+                                                purchase_id: newPurchaseId,
+                                            });
+                                        }
+                                    );
                                 });
                             }
                         );
@@ -756,9 +833,8 @@ app.post('/purchases', (req, res) => {
     });
 });
 
-
-// PUT /purchases/:id  (update one purchase + its single item)
-app.put('/purchases/:id', (req, res) => {
+// PUT /purchases/:id  (update ONE purchase + its (single) item)
+app.put("/purchases/:id", (req, res) => {
     const { id } = req.params;
     const {
         purchase_date,
@@ -768,7 +844,7 @@ app.put('/purchases/:id', (req, res) => {
         unit_cost,
         qty_received,
         purchase_status,
-        purchase_payment_status
+        purchase_payment_status,
     } = req.body;
 
     const qty = toInt(quantity);
@@ -778,47 +854,101 @@ app.put('/purchases/:id', (req, res) => {
     const status = purchase_status || recomputePurchaseStatus(qty, recv);
 
     getSessionWarehouseId(req, (eWh, whId) => {
-        if (eWh || !whId) return res.status(401).json({ error: 'No warehouse for session' });
+        if (eWh || !whId)
+            return res.status(401).json({ error: "No warehouse for session" });
 
         db.getConnection((err, conn) => {
             if (err) return res.status(500).json({ error: err.message });
 
             conn.beginTransaction((err) => {
-                if (err) { conn.release(); return res.status(500).json({ error: err.message }); }
+                if (err) {
+                    conn.release();
+                    return res.status(500).json({ error: err.message });
+                }
 
+                // Get previous received qty for stock adjustments
                 conn.query(
-                    `SELECT pi.product_id, pi.qty_received
-             FROM purchase_items pi
-            WHERE pi.purchase_id=? LIMIT 1`,
+                    `
+                    SELECT pi.product_id, pi.qty_received
+                    FROM purchase_items pi
+                    WHERE pi.purchase_id=? LIMIT 1
+                `,
                     [id],
                     (e0, rows0) => {
-                        if (e0) return conn.rollback(() => { conn.release(); res.status(500).json({ error: e0.message }); });
+                        if (e0) {
+                            return conn.rollback(() => {
+                                conn.release();
+                                res.status(500).json({ error: e0.message });
+                            });
+                        }
 
                         const prevRecv = Number(rows0?.[0]?.qty_received || 0);
                         const recvDelta = recv - prevRecv;
 
                         conn.query(
-                            `UPDATE purchases
-                  SET purchase_date=?, warehouse_id=?, supplier_id=?, total_cost=?, purchase_status=?, purchase_payment_status=?
-                WHERE purchase_id=?`,
-                            [purchase_date, whId, supplier_id, item_total, status, purchase_payment_status, id],
+                            `
+                            UPDATE purchases
+                            SET purchase_date=?, warehouse_id=?, supplier_id=?, total_cost=?, purchase_status=?, purchase_payment_status=?
+                            WHERE purchase_id=?
+                        `,
+                            [
+                                purchase_date,
+                                whId,
+                                supplier_id,
+                                item_total,
+                                status,
+                                purchase_payment_status,
+                                id,
+                            ],
                             (e1) => {
-                                if (e1) return conn.rollback(() => { conn.release(); res.status(500).json({ error: e1.message }); });
+                                if (e1) {
+                                    return conn.rollback(() => {
+                                        conn.release();
+                                        res.status(500).json({ error: e1.message });
+                                    });
+                                }
 
                                 conn.query(
-                                    `UPDATE purchase_items
-                      SET product_id=?, quantity=?, unit_cost=?, total_cost=?, qty_received=?
-                    WHERE purchase_id=?`,
-                                    [product_id, qty, ucost, item_total, recv, id],
+                                    `
+                                    UPDATE purchase_items
+                                    SET product_id=?, supplier_id=?, quantity=?, unit_cost=?, total_cost=?, qty_received=?
+                                    WHERE purchase_id=?
+                                `,
+                                    [
+                                        product_id,
+                                        supplier_id,
+                                        qty,
+                                        ucost,
+                                        item_total,
+                                        recv,
+                                        id,
+                                    ],
                                     (e2) => {
-                                        if (e2) return conn.rollback(() => { conn.release(); res.status(500).json({ error: e2.message }); });
+                                        if (e2) {
+                                            return conn.rollback(() => {
+                                                conn.release();
+                                                res.status(500).json({ error: e2.message });
+                                            });
+                                        }
 
                                         conn.commit((e3) => {
                                             conn.release();
-                                            applyReceivedToStock({ product_id, qty_received_delta: recvDelta, purchase_id: id }, (e4) => {
-                                                if (e4) return res.status(500).json({ error: e4.message });
-                                                res.json({ message: 'Purchase updated' });
-                                            });
+                                            applyReceivedToStock(
+                                                {
+                                                    product_id,
+                                                    qty_received_delta: recvDelta,
+                                                    purchase_id: id,
+                                                },
+                                                (e4) => {
+                                                    if (e4)
+                                                        return res
+                                                            .status(500)
+                                                            .json({ error: e4.message });
+                                                    res.json({
+                                                        message: "Purchase updated",
+                                                    });
+                                                }
+                                            );
                                         });
                                     }
                                 );
@@ -831,85 +961,285 @@ app.put('/purchases/:id', (req, res) => {
     });
 });
 
-
-// DELETE /purchases/:id  (removes purchase + item; NOTE: does NOT auto reverse stock)
-app.delete('/purchases/:id', (req, res) => {
+// DELETE /purchases/:id  (removes purchase + its items; NOTE: does NOT auto reverse stock)
+app.delete("/purchases/:id", (req, res) => {
     const { id } = req.params;
-    db.query('DELETE FROM purchases WHERE purchase_id=?', [id], (err) => {
+
+    db.getConnection((err, conn) => {
         if (err) return res.status(500).json({ error: err.message });
-        res.json({ message: 'Purchase deleted' });
-    });
-});
 
+        conn.beginTransaction((err) => {
+            if (err) {
+                conn.release();
+                return res.status(500).json({ error: err.message });
+            }
 
+            conn.query(
+                "DELETE FROM purchase_items WHERE purchase_id=?",
+                [id],
+                (e1) => {
+                    if (e1) {
+                        return conn.rollback(() => {
+                            conn.release();
+                            res.status(500).json({ error: e1.message });
+                        });
+                    }
 
-app.post('/purchases/bulk', (req, res) => {
-    const { purchase_date, supplier_id, items = [], payment_status = 'Unpaid' } = req.body;
-    if (!purchase_date || !supplier_id || !Array.isArray(items) || items.length === 0) {
-        return res.status(400).json({ error: 'Missing fields or empty items.' });
-    }
-
-    const clean = items.map(it => ({
-        product_id: Number(it.product_id),
-        quantity: Math.max(0, parseInt(it.quantity || 0, 10)),
-        unit_cost: Number(it.unit_cost || 0),
-        qty_received: Math.max(0, parseInt(it.qty_received || 0, 10)),
-    })).filter(x => x.product_id && x.quantity > 0);
-
-    if (clean.length === 0) return res.status(400).json({ error: 'No valid items.' });
-
-    const purchase_total = clean.reduce((s, x) => s + x.quantity * x.unit_cost, 0);
-    const purchase_status = clean.every(x => x.qty_received >= x.quantity) ? 'Completed' : 'Pending';
-
-    getSessionWarehouseId(req, (eWh, whId) => {
-        if (eWh || !whId) return res.status(401).json({ error: 'No warehouse for session' });
-
-        db.getConnection((err, conn) => {
-            if (err) return res.status(500).json({ error: err.message });
-
-            conn.beginTransaction(err => {
-                if (err) { conn.release(); return res.status(500).json({ error: err.message }); }
-
-                conn.query(
-                    `INSERT INTO purchases (purchase_date, warehouse_id, supplier_id, total_cost, purchase_status, purchase_payment_status)
-           VALUES (?,?,?,?,?,?)`,
-                    [purchase_date, whId, supplier_id, purchase_total, purchase_status, payment_status],
-                    (e1, r1) => {
-                        if (e1) return conn.rollback(() => { conn.release(); res.status(500).json({ error: e1.message }); });
-
-                        const purchase_id = r1.insertId;
-                        const values = clean.map(x => [purchase_id, x.product_id, x.quantity, x.unit_cost, x.quantity * x.unit_cost, x.qty_received]);
-
-                        conn.query(
-                            `INSERT INTO purchase_items (purchase_id, product_id, quantity, unit_cost, total_cost, qty_received)
-               VALUES ?`,
-                            [values],
-                            (e2) => {
-                                if (e2) return conn.rollback(() => { conn.release(); res.status(500).json({ error: e2.message }); });
-
-                                conn.commit(e3 => {
+                    conn.query(
+                        "DELETE FROM purchases WHERE purchase_id=?",
+                        [id],
+                        (e2) => {
+                            if (e2) {
+                                return conn.rollback(() => {
                                     conn.release();
-                                    let pending = 0, errorSent = false;
-                                    clean.forEach(it => {
-                                        if (it.qty_received > 0) {
-                                            pending++;
-                                            applyReceivedToStock({ product_id: it.product_id, qty_received_delta: it.qty_received, purchase_id }, (e4) => {
-                                                pending--;
-                                                if (e4 && !errorSent) { errorSent = true; return res.status(500).json({ error: e4.message }); }
-                                                if (pending === 0 && !errorSent) res.json({ message: 'Purchase created', purchase_id });
-                                            });
-                                        }
-                                    });
-                                    if (pending === 0) res.json({ message: 'Purchase created', purchase_id });
+                                    res.status(500).json({ error: e2.message });
                                 });
                             }
-                        );
-                    }
-                );
-            });
+
+                            conn.commit((e3) => {
+                                conn.release();
+                                if (e3)
+                                    return res
+                                        .status(500)
+                                        .json({ error: e3.message });
+                                res.json({ message: "Purchase deleted" });
+                            });
+                        }
+                    );
+                }
+            );
         });
     });
 });
+
+// POST /purchases/bulk
+app.post("/purchases/bulk", (req, res) => {
+    const {
+        purchase_date,
+        supplier_id: headerSupplierId,
+        items = [],
+        payment_status = "Unpaid",
+    } = req.body;
+
+    if (!purchase_date || !Array.isArray(items) || items.length === 0) {
+        return res
+            .status(400)
+            .json({ error: "Missing purchase_date or empty items." });
+    }
+
+    const clean = items
+        .map((it) => {
+            const supId = toInt(it.supplier_id || headerSupplierId);
+            return {
+                supplier_id: supId,
+                product_id: toInt(it.product_id),
+                quantity: Math.max(0, toInt(it.quantity)),
+                unit_cost: toMoney(it.unit_cost),
+                qty_received: Math.max(0, toInt(it.qty_received)),
+                purchase_payment_status:
+                    it.purchase_payment_status || payment_status || "Unpaid",
+            };
+        })
+        .filter((x) => x.supplier_id && x.product_id && x.quantity > 0);
+
+    if (clean.length === 0) {
+        return res
+            .status(400)
+            .json({ error: "No valid items after cleaning." });
+    }
+
+    // Group items by supplier so each supplier gets its own purchase row
+    const supplierGroups = new Map();
+    for (const it of clean) {
+        if (!supplierGroups.has(it.supplier_id)) {
+            supplierGroups.set(it.supplier_id, []);
+        }
+        supplierGroups.get(it.supplier_id).push(it);
+    }
+
+    getSessionWarehouseId(req, (eWh, whId) => {
+        if (eWh || !whId)
+            return res.status(401).json({ error: "No warehouse for session" });
+
+        const supplierIds = Array.from(supplierGroups.keys());
+        const createdPurchases = [];
+        let idx = 0;
+        let responseSent = false;
+
+        const fail = (status, msg) => {
+            if (responseSent) return;
+            responseSent = true;
+            return res.status(status).json({ error: msg });
+        };
+
+        function processNextSupplier() {
+            if (responseSent) return;
+
+            if (idx >= supplierIds.length) {
+                // Done
+                return res.json({
+                    message: "Bulk purchases created",
+                    purchases: createdPurchases,
+                });
+            }
+
+            const supId = supplierIds[idx++];
+            const itemsForSupplier = supplierGroups.get(supId);
+
+            const purchase_total = itemsForSupplier.reduce(
+                (s, x) => s + x.quantity * x.unit_cost,
+                0
+            );
+            const purchase_status = itemsForSupplier.every(
+                (x) => x.qty_received >= x.quantity
+            )
+                ? "Completed"
+                : "Pending";
+            const paymentStatus =
+                itemsForSupplier[0].purchase_payment_status || "Unpaid";
+
+            db.getConnection((err, conn) => {
+                if (err) return fail(500, err.message);
+
+                conn.beginTransaction((err) => {
+                    if (err) {
+                        conn.release();
+                        return fail(500, err.message);
+                    }
+
+                    conn.query(
+                        `
+                            INSERT INTO purchases
+                                (purchase_date, warehouse_id, supplier_id, total_cost, purchase_status, purchase_payment_status)
+                            VALUES (?,?,?,?,?,?)
+                        `,
+                        [
+                            purchase_date,
+                            whId,
+                            supId,
+                            purchase_total,
+                            purchase_status,
+                            paymentStatus,
+                        ],
+                        (e1, r1) => {
+                            if (e1) {
+                                return conn.rollback(() => {
+                                    conn.release();
+                                    fail(500, e1.message);
+                                });
+                            }
+
+                            const purchase_id = r1.insertId;
+                            const values = itemsForSupplier.map((x) => [
+                                purchase_id,
+                                x.product_id,
+                                supId,
+                                x.quantity,
+                                x.unit_cost,
+                                x.quantity * x.unit_cost,
+                                x.qty_received,
+                            ]);
+
+                            conn.query(
+                                `
+                                    INSERT INTO purchase_items
+                                        (purchase_id, product_id, supplier_id, quantity, unit_cost, total_cost, qty_received)
+                                    VALUES ?
+                                `,
+                                [values],
+                                (e2) => {
+                                    if (e2) {
+                                        return conn.rollback(() => {
+                                            conn.release();
+                                            fail(500, e2.message);
+                                        });
+                                    }
+
+                                    conn.commit((e3) => {
+                                        conn.release();
+                                        if (e3) return fail(500, e3.message);
+
+                                        // Apply stock moves for received quantities (per item)
+                                        let pending = 0;
+                                        let errored = false;
+
+                                        itemsForSupplier.forEach((x) => {
+                                            if (x.qty_received > 0) {
+                                                pending++;
+                                                applyReceivedToStock(
+                                                    {
+                                                        product_id: x.product_id,
+                                                        qty_received_delta:
+                                                            x.qty_received,
+                                                        purchase_id,
+                                                    },
+                                                    (e4) => {
+                                                        if (
+                                                            errored ||
+                                                            responseSent
+                                                        )
+                                                            return;
+                                                        if (e4) {
+                                                            errored = true;
+                                                            return fail(
+                                                                500,
+                                                                e4.message
+                                                            );
+                                                        }
+                                                        pending--;
+                                                        if (
+                                                            pending === 0 &&
+                                                            !errored
+                                                        ) {
+                                                            createdPurchases.push(
+                                                                {
+                                                                    purchase_id,
+                                                                    supplier_id:
+                                                                        supId,
+                                                                    total_cost:
+                                                                        purchase_total,
+                                                                    purchase_status,
+                                                                    purchase_payment_status:
+                                                                        paymentStatus,
+                                                                }
+                                                            );
+                                                            processNextSupplier();
+                                                        }
+                                                    }
+                                                );
+                                            }
+                                        });
+
+                                        if (
+                                            pending === 0 &&
+                                            !errored &&
+                                            !responseSent
+                                        ) {
+                                            // No qty_received > 0, so no stock updates
+                                            createdPurchases.push({
+                                                purchase_id,
+                                                supplier_id: supId,
+                                                total_cost: purchase_total,
+                                                purchase_status,
+                                                purchase_payment_status:
+                                                    paymentStatus,
+                                            });
+                                            processNextSupplier();
+                                        }
+                                    });
+                                }
+                            );
+                        }
+                    );
+                });
+            });
+        }
+
+        processNextSupplier();
+    });
+});
+
+
 
 // Sales ->>>>>>>>>>>>  
 app.post("/sales", upload.array("attachments"), (req, res) => {
@@ -2195,7 +2525,7 @@ app.get("/due_dates", (req, res) => {
             const missingDueDates = payables.filter(
                 (p) => !existingIds.includes(p.payables_id)
             );
- 
+
             if (missingDueDates.length === 0) {
                 const finalQuery = `
           SELECT 
@@ -2281,10 +2611,10 @@ app.get("/due_dates", (req, res) => {
 });
 
 app.put("/due_dates/:due_date_id", (req, res) => {
-  const { due_date_id } = req.params;
-  const { payment_status, payment_date, payment_mode, total_bill_amount } = req.body; 
+    const { due_date_id } = req.params;
+    const { payment_status, payment_date, payment_mode, total_bill_amount } = req.body;
 
-  const updateQuery = `
+    const updateQuery = `
     UPDATE due_dates 
     SET  
       payment_status = COALESCE(?, payment_status),
@@ -2295,13 +2625,13 @@ app.put("/due_dates/:due_date_id", (req, res) => {
     WHERE due_date_id = ?
   `;
 
-  db.query(updateQuery, [payment_status, payment_date, payment_mode, total_bill_amount, due_date_id], (err, result) => {
-    if (err) return res.status(500).json({ error: err });
-    if (result.affectedRows === 0) {
-      return res.status(404).json({ message: "Due date not found" });
-    }
-    res.json({ message: "Due date updated successfully" });
-  });
+    db.query(updateQuery, [payment_status, payment_date, payment_mode, total_bill_amount, due_date_id], (err, result) => {
+        if (err) return res.status(500).json({ error: err });
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ message: "Due date not found" });
+        }
+        res.json({ message: "Due date updated successfully" });
+    });
 });
 
 
