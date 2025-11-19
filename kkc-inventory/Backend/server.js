@@ -681,46 +681,58 @@ function applyReceivedToStock({ product_id, qty_received_delta, purchase_id }, c
 // ====== PURCHASES API ======
 
 // GET /purchases?search=...
+// Returns one row per purchase item, with a unified supplier_id/supplier_name
 app.get("/purchases", (req, res) => {
     const search = (req.query.search || "").trim();
     const like = `%${search}%`;
 
     const sql = `
-        SELECT 
-          pu.purchase_id,
-          pu.purchase_date,
-          pu.supplier_id          AS header_supplier_id,
-          s.supplier_name         AS header_supplier_name,
-          pu.total_cost           AS purchase_total_cost,
-          pu.purchase_status,
-          pu.purchase_payment_status,
+    SELECT 
+      pu.purchase_id,
+      pu.purchase_date,
 
-          pi.purchase_item_id,
-          pi.product_id,
-          pi.supplier_id          AS item_supplier_id,
-          si.supplier_name        AS item_supplier_name,
-          p.product_name,
-          p.sku,
-          pi.quantity,
-          pi.qty_received,
-          (pi.quantity - pi.qty_received) AS remaining,
-          pi.unit_cost,
-          pi.total_cost,
-          pi.created_at           AS purchase_item_created_at
-        FROM purchases pu
-        LEFT JOIN suppliers s  ON s.supplier_id  = pu.supplier_id
-        JOIN purchase_items pi ON pi.purchase_id = pu.purchase_id
-        JOIN products p        ON p.product_id   = pi.product_id
-        LEFT JOIN suppliers si ON si.supplier_id = pi.supplier_id
-        ${search ? "WHERE s.supplier_name LIKE ? OR si.supplier_name LIKE ? OR p.product_name LIKE ?" : ""}
-        ORDER BY pu.created_at DESC, pu.purchase_id DESC
-    `;
+      -- header-level supplier (for reference)
+      pu.supplier_id                    AS header_supplier_id,
+      s.supplier_name                   AS header_supplier_name,
+
+      -- item-level supplier (for multi-supplier purchases)
+      pi.supplier_id                    AS item_supplier_id,
+      si.supplier_name                  AS item_supplier_name,
+
+      -- what the frontend actually expects:
+      COALESCE(pi.supplier_id, pu.supplier_id)      AS supplier_id,
+      COALESCE(si.supplier_name, s.supplier_name)   AS supplier_name,
+
+      pu.total_cost                     AS purchase_total_cost,
+      pu.purchase_status,
+      pu.purchase_payment_status,
+
+      pi.purchase_item_id,
+      pi.product_id,
+      p.product_name,
+      p.sku,
+      pi.quantity,
+      pi.qty_received,
+      (pi.quantity - pi.qty_received)   AS remaining,
+      pi.unit_cost,
+      pi.total_cost,
+      pi.created_at                     AS purchase_item_created_at
+    FROM purchases pu
+    LEFT JOIN suppliers s  ON s.supplier_id  = pu.supplier_id
+    JOIN purchase_items pi ON pi.purchase_id = pu.purchase_id
+    JOIN products p        ON p.product_id   = pi.product_id
+    LEFT JOIN suppliers si ON si.supplier_id = pi.supplier_id
+    ${search ? "WHERE s.supplier_name LIKE ? OR si.supplier_name LIKE ? OR p.product_name LIKE ?" : ""}
+    ORDER BY pu.purchase_date DESC, pu.purchase_id DESC, pi.purchase_item_id ASC
+  `;
+
     const params = search ? [like, like, like] : [];
     db.query(sql, params, (err, rows) => {
         if (err) return res.status(500).json({ error: err.message });
         res.json(rows);
     });
 });
+
 
 // POST /purchases  (create ONE purchase + ONE item)
 app.post("/purchases", (req, res) => {
@@ -1021,6 +1033,8 @@ app.post("/purchases/bulk", (req, res) => {
         payment_status = "Unpaid",
     } = req.body;
 
+    //console.log("BULK BODY:", JSON.stringify(req.body, null, 2));
+
     if (!purchase_date || !Array.isArray(items) || items.length === 0) {
         return res
             .status(400)
@@ -1029,7 +1043,12 @@ app.post("/purchases/bulk", (req, res) => {
 
     const clean = items
         .map((it) => {
-            const supId = toInt(it.supplier_id || headerSupplierId);
+            const supId = toInt(
+                it.supplier_id !== undefined && it.supplier_id !== null
+                    ? it.supplier_id
+                    : headerSupplierId
+            );
+
             return {
                 supplier_id: supId,
                 product_id: toInt(it.product_id),
@@ -1076,7 +1095,6 @@ app.post("/purchases/bulk", (req, res) => {
             if (responseSent) return;
 
             if (idx >= supplierIds.length) {
-                // Done
                 return res.json({
                     message: "Bulk purchases created",
                     purchases: createdPurchases,
@@ -1109,9 +1127,9 @@ app.post("/purchases/bulk", (req, res) => {
 
                     conn.query(
                         `
-                            INSERT INTO purchases
-                                (purchase_date, warehouse_id, supplier_id, total_cost, purchase_status, purchase_payment_status)
-                            VALUES (?,?,?,?,?,?)
+                        INSERT INTO purchases
+                            (purchase_date, warehouse_id, supplier_id, total_cost, purchase_status, purchase_payment_status)
+                        VALUES (?,?,?,?,?,?)
                         `,
                         [
                             purchase_date,
@@ -1142,9 +1160,9 @@ app.post("/purchases/bulk", (req, res) => {
 
                             conn.query(
                                 `
-                                    INSERT INTO purchase_items
-                                        (purchase_id, product_id, supplier_id, quantity, unit_cost, total_cost, qty_received)
-                                    VALUES ?
+                                INSERT INTO purchase_items
+                                    (purchase_id, product_id, supplier_id, quantity, unit_cost, total_cost, qty_received)
+                                VALUES ?
                                 `,
                                 [values],
                                 (e2) => {
@@ -1238,6 +1256,7 @@ app.post("/purchases/bulk", (req, res) => {
         processNextSupplier();
     });
 });
+
 
 
 

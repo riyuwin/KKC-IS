@@ -16,8 +16,8 @@ export default function PurchaseEditorLeft({
   PS,
   DS,
   // VAT
-  vatRate,
-  setVatRate,
+  vatMode,
+  setVatMode,
   vatOptions,
 
   // add-line
@@ -40,7 +40,7 @@ export default function PurchaseEditorLeft({
 
   // table
   lines,
-  onUpdateCell,
+  onUpdateCell, 
   onRemoveLine,
   grandTotal,
 
@@ -70,7 +70,13 @@ export default function PurchaseEditorLeft({
   };
 
   const renderValueEllipsis = (text) => (
-    <Box sx={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+    <Box
+      sx={{
+        overflow: "hidden",
+        textOverflow: "ellipsis",
+        whiteSpace: "nowrap",
+      }}
+    >
       {text}
     </Box>
   );
@@ -131,9 +137,14 @@ export default function PurchaseEditorLeft({
                 SelectProps={{
                   ...selectCommon,
                   renderValue: (v) => {
-                    if (!v) return renderValueEllipsis("Select supplier…");
-                    const sel = suppliers.find((s) => String(s.supplier_id) === String(v));
-                    return renderValueEllipsis(sel?.supplier_name || "Select supplier…");
+                    if (!v)
+                      return renderValueEllipsis("Select supplier…");
+                    const sel = suppliers.find(
+                      (s) => String(s.supplier_id) === String(v)
+                    );
+                    return renderValueEllipsis(
+                      sel?.supplier_name || "Select supplier…"
+                    );
                   },
                 }}
                 placeholder="Select supplier…"
@@ -169,7 +180,8 @@ export default function PurchaseEditorLeft({
                   ...selectCommon,
                   renderValue: (v) =>
                     renderValueEllipsis(
-                      PS.find((p) => p.value === v)?.label || "Select payment status…"
+                      PS.find((p) => p.value === v)?.label ||
+                        "Select payment status…"
                     ),
                 }}
                 InputLabelProps={{ shrink: true }}
@@ -189,21 +201,22 @@ export default function PurchaseEditorLeft({
                 select
                 label="VAT"
                 size="small"
-                value={String(vatRate)}
-                onChange={(e) => setVatRate(Number(e.target.value))}
+                value={vatMode}
+                onChange={(e) => setVatMode(e.target.value)}
                 SelectProps={{
                   ...selectCommon,
                   renderValue: (v) =>
                     renderValueEllipsis(
-                      vatSelectOptions.find((opt) => String(opt.value) === String(v))?.label ||
-                        "Select VAT…"
+                      vatSelectOptions.find(
+                        (opt) => String(opt.value) === String(v)
+                      )?.label || "Select VAT…"
                     ),
                 }}
                 InputLabelProps={{ shrink: true }}
                 sx={{ ...fieldSx, ...ellipsisSelectSx }}
               >
                 {vatSelectOptions.map((opt) => (
-                  <MenuItem key={opt.value} value={String(opt.value)}>
+                  <MenuItem key={opt.value} value={opt.value}>
                     {opt.label}
                   </MenuItem>
                 ))}
@@ -218,10 +231,14 @@ export default function PurchaseEditorLeft({
                 alignItems="center"
                 sx={{ minHeight: 44, width: "100%" }}
               >
-                <Typography color="text.secondary">Delivery Status:</Typography>
+                <Typography color="text.secondary">
+                  Delivery Status:
+                </Typography>
                 <Chip
                   size="small"
-                  color={globalStatus === "Completed" ? "success" : "warning"}
+                  color={
+                    globalStatus === "Completed" ? "success" : "warning"
+                  }
                   label={globalStatus}
                 />
               </Stack>
@@ -260,7 +277,8 @@ export default function PurchaseEditorLeft({
                 SelectProps={{
                   ...selectCommon,
                   renderValue: (v) => {
-                    if (!v) return renderValueEllipsis("Select product…");
+                    if (!v)
+                      return renderValueEllipsis("Select product…");
                     const sel = productsForSupplier.find(
                       (p) => String(p.product_id) === String(v)
                     );
@@ -277,15 +295,22 @@ export default function PurchaseEditorLeft({
                   <em>Select product…</em>
                 </MenuItem>
                 {productsForSupplier.map((p) => (
-                  <MenuItem key={p.product_id} value={String(p.product_id)}>
+                  <MenuItem
+                    key={p.product_id}
+                    value={String(p.product_id)}
+                  >
                     <Tooltip
-                      title={`${p.product_name}${p.sku ? ` (${p.sku})` : ``}`}
+                      title={`${p.product_name}${
+                        p.sku ? ` (${p.sku})` : ``
+                      }`}
                     >
                       <ListItemText
                         primaryTypographyProps={{ noWrap: true }}
                         secondaryTypographyProps={{ noWrap: true }}
                         primary={p.product_name}
-                        secondary={p.sku ? `SKU: ${p.sku}` : undefined}
+                        secondary={
+                          p.sku ? `SKU: ${p.sku}` : undefined
+                        }
                       />
                     </Tooltip>
                   </MenuItem>
@@ -330,7 +355,11 @@ export default function PurchaseEditorLeft({
                 onChange={(e) => setUnit(e.target.value)}
                 disabled
                 sx={fieldSx}
-                InputProps={{ startAdornment: <InputAdornment position="start">₱</InputAdornment> }}
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">₱</InputAdornment>
+                  ),
+                }}
               />
             </Box>
 
@@ -377,7 +406,12 @@ export default function PurchaseEditorLeft({
             </Box>
 
             <Box sx={{ minWidth: 0 }}>
-              <Stack direction="row" spacing={1.5} alignItems="center" sx={{ minHeight: 44 }}>
+              <Stack
+                direction="row"
+                spacing={1.5}
+                alignItems="center"
+                sx={{ minHeight: 44 }}
+              >
                 <Chip
                   size="small"
                   color={addStatus === "Completed" ? "success" : "warning"}
@@ -399,6 +433,7 @@ export default function PurchaseEditorLeft({
         </CardContent>
       </Card>
 
+      {/* Items Table */}
       <Card sx={{ borderRadius: 2, boxShadow: 3, minWidth: 0 }}>
         <CardContent sx={{ p: 0 }}>
           <Box sx={{ width: "100%", overflowX: "hidden" }}>
@@ -411,18 +446,20 @@ export default function PurchaseEditorLeft({
               }}
             >
               <colgroup>
-                <col style={{ width: "20%" }} /> {/* Product */}
+                <col style={{ width: "15%" }} /> {/* Supplier */}
+                <col style={{ width: "15%" }} /> {/* Product */}
                 <col style={{ width: "10%" }} /> {/* Qty Ordered */}
                 <col style={{ width: "10%" }} /> {/* Qty Received */}
                 <col style={{ width: "10%" }} /> {/* Unit ₱ */}
                 <col style={{ width: "10%" }} /> {/* Remaining */}
-                <col style={{ width: "15%" }} /> {/* Status */}
-                <col style={{ width: "15%" }} /> {/* Total ₱ */}
+                <col style={{ width: "10%" }} /> {/* Status */}
+                <col style={{ width: "10%" }} /> {/* Total ₱ */}
                 <col style={{ width: "10%" }} /> {/* Actions */}
               </colgroup>
 
               <TableHead>
                 <TableRow>
+                  <TableCell align="center">Supplier</TableCell>
                   <TableCell align="center">Product</TableCell>
                   <TableCell align="center">Qty Ordered</TableCell>
                   <TableCell align="center">Qty Received</TableCell>
@@ -443,10 +480,31 @@ export default function PurchaseEditorLeft({
                   const status = q > 0 && r === q ? "Completed" : "Pending";
                   const lineTotal = q * u;
 
+                  const supplier =
+                    suppliers.find(
+                      (s) =>
+                        String(s.supplier_id) === String(l.supplier_id)
+                    ) || null;
+                  const supplierName = supplier?.supplier_name || "";
+
                   return (
                     <TableRow key={l.temp_id}>
                       <TableCell align="center" sx={{ minWidth: 0 }}>
-                        <Typography noWrap title={l.product_name} sx={ellipsisTextSx}>
+                        <Typography
+                          noWrap
+                          title={supplierName}
+                          sx={ellipsisTextSx}
+                        >
+                          {supplierName}
+                        </Typography>
+                      </TableCell>
+
+                      <TableCell align="center" sx={{ minWidth: 0 }}>
+                        <Typography
+                          noWrap
+                          title={l.product_name}
+                          sx={ellipsisTextSx}
+                        >
                           {l.product_name}
                         </Typography>
                       </TableCell>
@@ -521,7 +579,7 @@ export default function PurchaseEditorLeft({
 
                 {lines.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={8}>
+                    <TableCell colSpan={9}>
                       <Box sx={{ p: 3 }}>
                         <Typography color="text.secondary" align="center">
                           No items yet. Add a product above.
@@ -533,7 +591,7 @@ export default function PurchaseEditorLeft({
 
                 {lines.length > 0 && (
                   <TableRow>
-                    <TableCell colSpan={5} />
+                    <TableCell colSpan={6} />
                     <TableCell align="center">
                       <b>Grand Total</b>
                     </TableCell>

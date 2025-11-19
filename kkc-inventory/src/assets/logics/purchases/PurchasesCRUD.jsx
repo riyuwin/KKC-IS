@@ -68,6 +68,37 @@ async function createPurchase(payload) {
   }
 }
 
+// create bulk purchases (multi-line, multi-supplier)
+async function createBulkPurchase(payload) {
+  const ok = await swalConfirm(
+    'Add purchases?',
+    'This will create one purchase per supplier from these items.'
+  );
+  if (!ok) return { cancelled: true };
+
+  try {
+    const res = await fetch(`${PortPurchases}/bulk`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Bulk create failed');
+
+    await swalFire({
+      icon: 'success',
+      title: 'Purchases Created',
+      text: 'Bulk purchases have been added.',
+      timer: 1400,
+      showConfirmButton: false,
+    });
+    return data;
+  } catch (err) {
+    await swalFire({ icon: 'error', title: 'Bulk Create Failed', text: err.message });
+    throw err;
+  }
+}
+
 async function updatePurchase(id, payload) {
   const ok = await swalConfirm('Update purchase?', 'Save changes to this purchase?');
   if (!ok) return { cancelled: true };
@@ -129,5 +160,12 @@ async function deletePurchase(id, displayLabel) {
   }
 }
 
-const PurchasesCRUD = { fetchPurchases, createPurchase, updatePurchase, deletePurchase };
+const PurchasesCRUD = {
+  fetchPurchases,
+  createPurchase,
+  createBulkPurchase,
+  updatePurchase,
+  deletePurchase,
+};
+
 export default PurchasesCRUD;

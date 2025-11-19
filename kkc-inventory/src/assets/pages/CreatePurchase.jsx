@@ -24,8 +24,9 @@ const PS = [
 ];
 
 const VAT_OPTIONS = [
-  { value: 0, label: "No VAT" },
-  { value: 0.12, label: "VAT 12%" },
+  { value: "non-vat", label: "Non-VAT" },
+  { value: "inc-vat", label: "VAT Inclusive (12%)" },
+  { value: "ext-vat", label: "VAT Exclusive (12%)" },
 ];
 
 function todayYYYYMMDD() {
@@ -36,6 +37,7 @@ function todayYYYYMMDD() {
 
 export default function CreatePurchase() {
   const [purchaseDate, setPurchaseDate] = useState(() => todayYYYYMMDD());
+
   const [supplierId, setSupplierId] = useState("");
   const [paymentStatus, setPaymentStatus] = useState("Unpaid");
 
@@ -44,7 +46,7 @@ export default function CreatePurchase() {
 
   const [lines, setLines] = useState([]);
 
-  // add-line controls
+  // add-line
   const [pId, setPId] = useState("");
   const [qty, setQty] = useState("");
   const [unit, setUnit] = useState("");
@@ -52,8 +54,8 @@ export default function CreatePurchase() {
 
   const [editingId, setEditingId] = useState(null);
 
-  // VAT
-  const [vatRate, setVatRate] = useState(0.12);
+  // VAT mode: non-vat | inc-vat | ext-vat
+  const [vatMode, setVatMode] = useState("non-vat");
 
   const addQty = Number(qty || 0);
   const addRecv = Number(recv || 0);
@@ -106,8 +108,7 @@ export default function CreatePurchase() {
     () =>
       lines.length > 0 &&
       lines.every(
-        (l) =>
-          Number(l.qty_received || 0) >= Number(l.quantity || 0)
+        (l) => Number(l.qty_received || 0) >= Number(l.quantity || 0)
       ),
     [lines]
   );
@@ -139,8 +140,33 @@ export default function CreatePurchase() {
     [lines]
   );
 
-  const estVat = grandTotal * (vatRate || 0);
-  const estTotalWithVat = grandTotal + estVat;
+  // Map VAT mode to numeric rate (for display / info if needed)
+  const numericVatRate = useMemo(() => {
+    if (vatMode === "inc-vat") return 0.12;
+    if (vatMode === "ext-vat") return 0.12;
+    return 0;
+  }, [vatMode]);
+
+  const { estVat, estTotalWithVat } = useMemo(() => {
+    if (!grandTotal) {
+      return { estVat: 0, estTotalWithVat: 0 };
+    }
+
+    if (vatMode === "inc-vat") {
+      const rate = numericVatRate || 0.12;
+      const vatPart = grandTotal - grandTotal / (1 + rate);
+      return { estVat: vatPart, estTotalWithVat: grandTotal };
+    }
+
+    if (vatMode === "ext-vat") {
+      const rate = numericVatRate || 0.12;
+      const vatPart = grandTotal * rate;
+      return { estVat: vatPart, estTotalWithVat: grandTotal + vatPart };
+    }
+
+    // non-vat
+    return { estVat: 0, estTotalWithVat: grandTotal };
+  }, [grandTotal, vatMode, numericVatRate]);
 
   function resetAddForm() {
     setPId("");
@@ -152,34 +178,54 @@ export default function CreatePurchase() {
   function onSelectProduct(e) {
     const val = e.target.value;
     setPId(val);
-    const prod = productsForSupplier.find(
-      (p) => String(p.product_id) === String(val)
-    );
+
+    // Try to find product in filtered list first, fallback to full list
+    const prod =
+      productsForSupplier.find(
+        (p) => String(p.product_id) === String(val)
+      ) ||
+      products.find((p) => String(p.product_id) === String(val));
+
+    if (prod?.supplier_id) {
+      setSupplierId(String(prod.supplier_id));
+    }
+
     setUnit(prod?.cost_price ?? "");
   }
 
   function addOrUpdateLine() {
     if (!pId || !addQty) return;
 
-    const prod = productsForSupplier.find(
-      (p) => String(p.product_id) === String(pId)
-    );
+    const prod =
+      products.find((p) => String(p.product_id) === String(pId)) ||
+      productsForSupplier.find(
+        (p) => String(p.product_id) === String(pId)
+      );
+
+    const supplier_id = prod
+      ? Number(prod.supplier_id)
+      : supplierId
+      ? Number(supplierId)
+      : null;
+
+    if (!supplier_id) {
+      alert("This product has no supplier assigned.");
+      return;
+    }
+
+    const baseLine = {
+      supplier_id,
+      product_id: Number(pId),
+      product_name: prod?.product_name || `#${pId}`,
+      quantity: addQty,
+      unit_cost: unit === "" ? Number(prod?.cost_price || 0) : addUnit,
+      qty_received: addRecv,
+    };
 
     if (editingId) {
       // update existing line
       setLines((ls) =>
-        ls.map((l) =>
-          l.temp_id === editingId
-            ? {
-                ...l,
-                product_id: Number(pId),
-                product_name: prod?.product_name || `#${pId}`,
-                quantity: addQty,
-                unit_cost: unit === "" ? Number(prod?.cost_price || 0) : addUnit,
-                qty_received: addRecv,
-              }
-            : l
-        )
+        ls.map((l) => (l.temp_id === editingId ? { ...l, ...baseLine } : l))
       );
     } else {
       // add new line
@@ -187,11 +233,7 @@ export default function CreatePurchase() {
         ...ls,
         {
           temp_id: crypto.randomUUID(),
-          product_id: Number(pId),
-          product_name: prod?.product_name || `#${pId}`,
-          quantity: addQty,
-          unit_cost: unit === "" ? Number(prod?.cost_price || 0) : addUnit,
-          qty_received: addRecv,
+          ...baseLine,
         },
       ]);
     }
@@ -218,15 +260,24 @@ export default function CreatePurchase() {
   }
 
   function startEditLine(line) {
+    // Ensure product dropdown shows the correct supplier's products
+    if (line.supplier_id) {
+      setSupplierId(String(line.supplier_id));
+    }
+
     setEditingId(line.temp_id);
     setPId(String(line.product_id));
     setQty(
-      line.quantity === "" || line.quantity === null || line.quantity === undefined
+      line.quantity === "" ||
+      line.quantity === null ||
+      line.quantity === undefined
         ? ""
         : String(line.quantity)
     );
     setRecv(
-      line.qty_received === "" || line.qty_received === null || line.qty_received === undefined
+      line.qty_received === "" ||
+      line.qty_received === null ||
+      line.qty_received === undefined
         ? ""
         : String(line.qty_received)
     );
@@ -238,19 +289,22 @@ export default function CreatePurchase() {
   }
 
   async function save() {
-    if (!purchaseDate || !supplierId || lines.length === 0) return;
+    if (!purchaseDate || lines.length === 0) return;
 
     const payload = {
       purchase_date: purchaseDate,
-      supplier_id: supplierId,
       payment_status: paymentStatus,
+      // supplier_id PER ITEM
       items: lines.map((l) => ({
         product_id: Number(l.product_id),
+        supplier_id: Number(l.supplier_id),
         quantity: Number(l.quantity || 0),
         unit_cost: Number(l.unit_cost || 0),
         qty_received: Number(l.qty_received || 0),
       })),
     };
+
+    console.log("SAVE BULK PAYLOAD:", payload);
 
     try {
       const r = await fetch(`${API}/purchases/bulk`, {
@@ -282,11 +336,27 @@ export default function CreatePurchase() {
   };
   const contentSx = { maxWidth: 1300, mx: "auto" };
 
-  const supplierName = supplierId
-    ? suppliers.find(
-        (s) => String(s.supplier_id) === String(s.supplierId)
-      )?.supplier_name || ""
-    : "";
+  // For the summary card: if multiple suppliers are involved, show "Multiple suppliers"
+  const supplierName = useMemo(() => {
+    const ids = Array.from(
+      new Set(
+        lines
+          .map((l) => l.supplier_id)
+          .filter((v) => v !== null && v !== undefined)
+          .map(String)
+      )
+    );
+    if (ids.length === 0) return "";
+    if (ids.length === 1) {
+      const sid = ids[0];
+      return (
+        suppliers.find(
+          (s) => String(s.supplier_id) === String(sid)
+        )?.supplier_name || ""
+      );
+    }
+    return "Multiple suppliers";
+  }, [lines, suppliers]);
 
   return (
     <Box sx={pageSx}>
@@ -301,9 +371,9 @@ export default function CreatePurchase() {
           spacing={3}
           alignItems="flex-start"
           sx={{
-            flexWrap: "nowrap", // never wrap to next line
-            overflowX: "auto", // allow horizontal scroll on very small screens
-            pb: 1, // avoid scrollbar overlay
+            flexWrap: "nowrap",
+            overflowX: "auto",
+            pb: 1,
           }}
         >
           {/* LEFT column (editor) */}
@@ -325,8 +395,9 @@ export default function CreatePurchase() {
               globalStatus={globalStatus}
               PS={PS}
               DS={DS}
-              vatRate={vatRate}
-              setVatRate={setVatRate}
+              // VAT
+              vatMode={vatMode}
+              setVatMode={setVatMode}
               vatOptions={VAT_OPTIONS}
               // add-line
               pId={pId}
@@ -361,7 +432,7 @@ export default function CreatePurchase() {
               <Button
                 variant="contained"
                 onClick={save}
-                disabled={!purchaseDate || !supplierId || !lines.length}
+                disabled={!purchaseDate || !lines.length}
               >
                 Save Purchase
               </Button>
@@ -397,7 +468,8 @@ export default function CreatePurchase() {
               outstandingValue={outstandingValue}
               lines={lines}
               peso={peso}
-              vatRate={vatRate}
+              vatRate={numericVatRate}
+              vatMode={vatMode}
             />
           </Grid>
         </Grid>

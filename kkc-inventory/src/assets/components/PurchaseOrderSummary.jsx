@@ -17,6 +17,7 @@ export default function PurchaseOrderSummary({
   lines = [],
   peso,
   vatRate = 0.12,
+  vatMode = "non-vat",
 }) {
   const valueEllipsisSx = {
     textAlign: "right",
@@ -29,6 +30,17 @@ export default function PurchaseOrderSummary({
   const labelSx = { color: "text.secondary" };
 
   const vatPercentLabel = `${Math.round((vatRate || 0) * 100)}%`;
+
+  const vatModeLabel = (() => {
+    switch (vatMode) {
+      case "inc-vat":
+        return `VAT Inclusive (${vatPercentLabel})`;
+      case "ext-vat":
+        return `VAT Exclusive (${vatPercentLabel})`;
+      default:
+        return `Non-VAT (${vatPercentLabel})`;
+    }
+  })();
 
   return (
     <Card
@@ -60,20 +72,14 @@ export default function PurchaseOrderSummary({
             {supplierName || "—"}
           </Typography>
 
-          <Typography
-            variant="body2"
-            sx={{ ...labelSx, mt: 1 }}
-          >
+          <Typography variant="body2" sx={{ ...labelSx, mt: 1 }}>
             Date
           </Typography>
           <Typography noWrap title={purchaseDate}>
             {purchaseDate || "—"}
           </Typography>
 
-          <Typography
-            variant="body2"
-            sx={{ ...labelSx, mt: 1 }}
-          >
+          <Typography variant="body2" sx={{ ...labelSx, mt: 1 }}>
             Payment Status
           </Typography>
           <Chip
@@ -95,7 +101,8 @@ export default function PurchaseOrderSummary({
             <Typography sx={valueEllipsisSx}>{peso(subtotal)}</Typography>
           </Stack>
           <Stack direction="row" justifyContent="space-between" alignItems="center">
-            <Typography sx={labelSx}>VAT ({vatPercentLabel})</Typography>
+            {/* UPDATED: show proper VAT label based on mode */}
+            <Typography sx={labelSx}>VAT - {vatModeLabel}</Typography>
             <Typography sx={valueEllipsisSx}>{peso(vat)}</Typography>
           </Stack>
           <Stack direction="row" justifyContent="space-between" alignItems="center">

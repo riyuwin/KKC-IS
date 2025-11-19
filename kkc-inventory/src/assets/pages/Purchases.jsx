@@ -121,6 +121,13 @@ function Purchases() {
     [computedRows, order, orderBy]
   );
 
+  const getSupplierIdFromRow = (row) =>
+    row.supplier_id ??
+    row.item_supplier_id ??
+    row.header_supplier_id ??
+    null;
+
+
   const headerCellSx = {
     py: 3.0,
     px: 0.75,
@@ -163,7 +170,7 @@ function Purchases() {
     setSelectedId(row.purchase_id);
     setFormData({
       purchase_date: row.purchase_date,
-      supplier_id: row.supplier_id,
+      supplier_id: getSupplierIdFromRow(row),
       product_id: row.product_id,
       quantity: row.quantity,
       unit_cost: row.unit_cost,
@@ -174,12 +181,13 @@ function Purchases() {
     });
     setOpen(true);
   };
+
   const openEdit = (row) => {
     setDialogMode("edit");
     setSelectedId(row.purchase_id);
     setFormData({
       purchase_date: row.purchase_date,
-      supplier_id: row.supplier_id,
+      supplier_id: getSupplierIdFromRow(row),
       product_id: row.product_id,
       quantity: row.quantity,
       unit_cost: row.unit_cost,
@@ -190,6 +198,7 @@ function Purchases() {
     });
     setOpen(true);
   };
+
 
   const handleDelete = async (row) => {
     const res = await PurchasesCRUD.deletePurchase(row.purchase_id, row.purchase_id);
