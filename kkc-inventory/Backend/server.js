@@ -1732,7 +1732,7 @@ function adjustProductStock({ product_id, delta }, cb) {
 
                 conn.query('UPDATE products SET stock=? WHERE product_id=?', [next, pid], e2 => {
                     if (e2) return conn.rollback(() => { conn.release(); cb?.(e2); });
-                    const status = computeStockStatus(next); // you already have this function
+                    const status = computeStockStatus(next); 
                     conn.query('UPDATE products SET stock_status=? WHERE product_id=?', [status, pid], e3 => {
                         if (e3) return conn.rollback(() => { conn.release(); cb?.(e3); });
                         conn.commit(e4 => { conn.release(); cb?.(e4 || null); });
@@ -1758,22 +1758,39 @@ function getSessionWarehouseId(req, cb) {
 }
 
 
-// Get warehouse info (id + name) of the logged in account
-function getWarehouseInfo(req, cb) {
-    const uid = req.session?.user?.account_id;
-    if (!uid) return cb(new Error('Not authenticated'));
+// Get warehouse + role info of the logged in account  
+function getWarehouseInfo(req, cb) {                   
+    const user = req.session?.user;                 
+    if (!user || !user.account_id) {                
+        return cb(new Error('Not authenticated'));  
+    }                                               
+
     const sql = `
-    SELECT a.warehouse_id, w.warehouse_name
+    SELECT 
+      a.account_id,
+      a.role,
+      a.warehouse_id,
+      w.warehouse_name
     FROM accounts a
     LEFT JOIN warehouse w ON w.warehouse_id = a.warehouse_id
-    WHERE a.account_id = ? LIMIT 1
-  `;
-    db.query(sql, [uid], (err, rows) => {
+    WHERE a.account_id = ? 
+    LIMIT 1
+  `;                                               
+
+    db.query(sql, [user.account_id], (err, rows) => {
         if (err) return cb(err);
         if (!rows?.length) return cb(new Error('Warehouse not found for user'));
-        cb(null, { warehouse_id: rows[0].warehouse_id, warehouse_name: rows[0].warehouse_name || 'Warehouse' });
+
+        const row = rows[0];
+        cb(null, {
+            account_id: row.account_id,
+            role: row.role,                         
+            warehouse_id: row.warehouse_id,
+            warehouse_name: row.warehouse_name || 'Warehouse'
+        });
     });
 }
+
 
 // Create a list of labels for the chart ranges
 function makeLabels(mode) {
@@ -2189,38 +2206,101 @@ app.delete('/returns/purchase/:id', (req, res) => {
 
 
 // DASHBOARD
+
 app.get('/dashboard/summary', (req, res) => {
     getWarehouseInfo(req, (e, wh) => {
-        if (e) return res.status(401).json({ error: 'Not authenticated' });
+        if (e) {
+            if (e.message === 'Not authenticated') {        
+                return res.status(401).json({ error: 'Not authenticated' })
+            }
+            return res.status(500).json({ error: e.message })
+        }
 
-        const wid = wh.warehouse_id;
+        const role = String(wh.role || '').toLowerCase();     
+        const isAdmin = role === 'admin';                     
 
-        // both Sales and Purchases are filtered by warehouse_id
-        const qSales = 'SELECT COALESCE(SUM(total_sale),0) AS total FROM sales     WHERE warehouse_id=?';
-        const qPurchases = 'SELECT COALESCE(SUM(total_cost),0) AS total FROM purchases WHERE warehouse_id=?';
-        const qProducts = 'SELECT COUNT(*) AS cnt FROM products';
+        let filterWarehouseId = null;                         
 
-        db.query(qSales, [wid], (e1, r1) => {
-            if (e1) return res.status(500).json({ error: e1.message });
-            db.query(qPurchases, [wid], (e2, r2) => {
-                if (e2) return res.status(500).json({ error: e2.message });
-                db.query(qProducts, [], (e3, r3) => {
-                    if (e3) return res.status(500).json({ error: e3.message });
-                    res.json({
-                        warehouse: wh,
-                        totals: {
-                            sales: Number(r1?.[0]?.total || 0),
-                            purchases: Number(r2?.[0]?.total || 0),
-                            products: Number(r3?.[0]?.cnt || 0)
-                        }
+        if (!isAdmin) {
+            filterWarehouseId = wh.warehouse_id;              
+        } else if (req.query.warehouse_id) {
+            const tmp = Number(req.query.warehouse_id);
+            if (!Number.isNaN(tmp)) filterWarehouseId = tmp;
+        }
+
+        const isAll = isAdmin && !filterWarehouseId;        
+
+        let qSales, qPurchases, qProducts;                    
+        let paramsSales = [];
+        let paramsPurch = [];
+        let paramsProducts = [];                            
+
+        if (isAll) {
+            // Admin, ALL warehouses
+            qSales = 'SELECT COALESCE(SUM(total_sale),0) AS total FROM sales';
+            qPurchases = 'SELECT COALESCE(SUM(total_cost),0) AS total FROM purchases';
+            qProducts = 'SELECT COUNT(*) AS cnt FROM products';  // all products
+        } else {
+            // Warehouse user OR admin filtered to a warehouse
+            qSales =
+                'SELECT COALESCE(SUM(total_sale),0) AS total FROM sales WHERE warehouse_id=?';
+            qPurchases =
+                'SELECT COALESCE(SUM(total_cost),0) AS total FROM purchases WHERE warehouse_id=?';
+            qProducts =
+                'SELECT COUNT(*) AS cnt FROM products WHERE warehouse_id=?'; 
+
+            paramsSales = [filterWarehouseId];
+            paramsPurch = [filterWarehouseId];
+            paramsProducts = [filterWarehouseId];               
+        }
+
+        const qWhInfo =
+            'SELECT warehouse_id, warehouse_name FROM warehouse WHERE warehouse_id=?'; 
+
+        function runTotals(warehouseRow) {
+            db.query(qSales, paramsSales, (e1, r1) => {
+                if (e1) return res.status(500).json({ error: e1.message });
+                db.query(qPurchases, paramsPurch, (e2, r2) => {
+                    if (e2) return res.status(500).json({ error: e2.message });
+                    db.query(qProducts, paramsProducts, (e3, r3) => {
+                        if (e3) return res.status(500).json({ error: e3.message });
+                        res.json({
+                            role: wh.role, // accounts.role
+                            warehouse: warehouseRow,
+                            totals: {
+                                sales: Number(r1?.[0]?.total || 0),
+                                purchases: Number(r2?.[0]?.total || 0),
+                                products: Number(r3?.[0]?.cnt || 0)
+                            }
+                        });
                     });
                 });
             });
-        });
+        }
+
+        if (isAll) {
+            // Admin "All Warehouses"
+            runTotals({ warehouse_id: null, warehouse_name: 'All Warehouses' });
+        } else if (isAdmin && filterWarehouseId && filterWarehouseId !== wh.warehouse_id) {
+            // Admin viewing a different warehouse via dropdown
+            db.query(qWhInfo, [filterWarehouseId], (e0, r0) => {
+                if (e0) return res.status(500).json({ error: e0.message });
+                const warehouseRow =
+                    (r0 && r0[0]) ||
+                    { warehouse_id: filterWarehouseId, warehouse_name: `Warehouse ${filterWarehouseId}` };
+                runTotals(warehouseRow);
+            });
+        } else {
+            runTotals({
+                warehouse_id: wh.warehouse_id,
+                warehouse_name: wh.warehouse_name
+            });
+        }
     });
 });
 
 
+// DASHBOARD SERIES
 app.get('/dashboard/series', (req, res) => {
     const mode = String(req.query.mode || 'weekly').toLowerCase(); // daily | weekly | monthly
     if (!['daily', 'weekly', 'monthly'].includes(mode)) {
@@ -2228,57 +2308,121 @@ app.get('/dashboard/series', (req, res) => {
     }
 
     getWarehouseInfo(req, (e, wh) => {
-        if (e) return res.status(401).json({ error: 'Not authenticated' });
+        if (e) {
+            if (e.message === 'Not authenticated') {
+                return res.status(401).json({ error: 'Not authenticated' });
+            }
+            return res.status(500).json({ error: e.message });
+        }
 
-        let salesSQL, purchasesSQL, paramsSales = [], paramsPurch = [];
+        const role = String(wh.role || '').toLowerCase();
+        const isAdmin = role === 'admin';
+
+        let filterWarehouseId = null;
+        if (!isAdmin) {
+            filterWarehouseId = wh.warehouse_id;
+        } else if (req.query.warehouse_id) {
+            const tmp = Number(req.query.warehouse_id);
+            if (!Number.isNaN(tmp)) filterWarehouseId = tmp;
+        }
+        const isAll = isAdmin && !filterWarehouseId;
+
+        let salesSQL,
+            purchasesSQL,
+            paramsSales = [],
+            paramsPurch = [];
 
         if (mode === 'daily') {
-            salesSQL = `
-        SELECT DATE(sale_date) AS label, COALESCE(SUM(total_sale),0) AS total
-        FROM sales
-        WHERE warehouse_id=? AND sale_date >= DATE_SUB(CURDATE(), INTERVAL 6 DAY)
-        GROUP BY DATE(sale_date)
-      `;
-            purchasesSQL = `
-        SELECT DATE(purchase_date) AS label, COALESCE(SUM(total_cost),0) AS total
-        FROM purchases
-        WHERE warehouse_id=? AND purchase_date >= DATE_SUB(CURDATE(), INTERVAL 6 DAY)
-        GROUP BY DATE(purchase_date)
-      `;
-            paramsSales = [wh.warehouse_id];
-            paramsPurch = [wh.warehouse_id];
-
+            if (isAll) {
+                salesSQL = `
+          SELECT DATE(sale_date) AS label, COALESCE(SUM(total_sale),0) AS total
+          FROM sales
+          WHERE sale_date >= DATE_SUB(CURDATE(), INTERVAL 6 DAY)
+          GROUP BY DATE(sale_date)
+        `;
+                purchasesSQL = `
+          SELECT DATE(purchase_date) AS label, COALESCE(SUM(total_cost),0) AS total
+          FROM purchases
+          WHERE purchase_date >= DATE_SUB(CURDATE(), INTERVAL 6 DAY)
+          GROUP BY DATE(purchase_date)
+        `;
+            } else {
+                salesSQL = `
+          SELECT DATE(sale_date) AS label, COALESCE(SUM(total_sale),0) AS total
+          FROM sales
+          WHERE warehouse_id=? AND sale_date >= DATE_SUB(CURDATE(), INTERVAL 6 DAY)
+          GROUP BY DATE(sale_date)
+        `;
+                purchasesSQL = `
+          SELECT DATE(purchase_date) AS label, COALESCE(SUM(total_cost),0) AS total
+          FROM purchases
+          WHERE warehouse_id=? AND purchase_date >= DATE_SUB(CURDATE(), INTERVAL 6 DAY)
+          GROUP BY DATE(purchase_date)
+        `;
+                paramsSales = [filterWarehouseId];
+                paramsPurch = [filterWarehouseId];
+            }
         } else if (mode === 'weekly') {
-            salesSQL = `
-        SELECT CONCAT(YEARWEEK(sale_date,1)) AS raw, COALESCE(SUM(total_sale),0) AS total
-        FROM sales
-        WHERE warehouse_id=? AND sale_date >= DATE_SUB(CURDATE(), INTERVAL 56 DAY)
-        GROUP BY YEARWEEK(sale_date,1)
-      `;
-            purchasesSQL = `
-        SELECT CONCAT(YEARWEEK(purchase_date,1)) AS raw, COALESCE(SUM(total_cost),0) AS total
-        FROM purchases
-        WHERE warehouse_id=? AND purchase_date >= DATE_SUB(CURDATE(), INTERVAL 56 DAY)
-        GROUP BY YEARWEEK(purchase_date,1)
-      `;
-            paramsSales = [wh.warehouse_id];
-            paramsPurch = [wh.warehouse_id];
-
+            if (isAll) {
+                salesSQL = `
+          SELECT CONCAT(YEARWEEK(sale_date,1)) AS raw, COALESCE(SUM(total_sale),0) AS total
+          FROM sales
+          WHERE sale_date >= DATE_SUB(CURDATE(), INTERVAL 56 DAY)
+          GROUP BY YEARWEEK(sale_date,1)
+        `;
+                purchasesSQL = `
+          SELECT CONCAT(YEARWEEK(purchase_date,1)) AS raw, COALESCE(SUM(total_cost),0) AS total
+          FROM purchases
+          WHERE purchase_date >= DATE_SUB(CURDATE(), INTERVAL 56 DAY)
+          GROUP BY YEARWEEK(purchase_date,1)
+        `;
+            } else {
+                salesSQL = `
+          SELECT CONCAT(YEARWEEK(sale_date,1)) AS raw, COALESCE(SUM(total_sale),0) AS total
+          FROM sales
+          WHERE warehouse_id=? AND sale_date >= DATE_SUB(CURDATE(), INTERVAL 56 DAY)
+          GROUP BY YEARWEEK(sale_date,1)
+        `;
+                purchasesSQL = `
+          SELECT CONCAT(YEARWEEK(purchase_date,1)) AS raw, COALESCE(SUM(total_cost),0) AS total
+          FROM purchases
+          WHERE warehouse_id=? AND purchase_date >= DATE_SUB(CURDATE(), INTERVAL 56 DAY)
+          GROUP BY YEARWEEK(purchase_date,1)
+        `;
+                paramsSales = [filterWarehouseId];
+                paramsPurch = [filterWarehouseId];
+            }
         } else {
-            salesSQL = `
-        SELECT DATE_FORMAT(sale_date,'%Y-%m') AS label, COALESCE(SUM(total_sale),0) AS total
-        FROM sales
-        WHERE warehouse_id=? AND sale_date >= DATE_SUB(CURDATE(), INTERVAL 365 DAY)
-        GROUP BY DATE_FORMAT(sale_date,'%Y-%m')
-      `;
-            purchasesSQL = `
-        SELECT DATE_FORMAT(purchase_date,'%Y-%m') AS label, COALESCE(SUM(total_cost),0) AS total
-        FROM purchases
-        WHERE warehouse_id=? AND purchase_date >= DATE_SUB(CURDATE(), INTERVAL 365 DAY)
-        GROUP BY DATE_FORMAT(purchase_date,'%Y-%m')
-      `;
-            paramsSales = [wh.warehouse_id];
-            paramsPurch = [wh.warehouse_id];
+            // monthly
+            if (isAll) {
+                salesSQL = `
+          SELECT DATE_FORMAT(sale_date,'%Y-%m') AS label, COALESCE(SUM(total_sale),0) AS total
+          FROM sales
+          WHERE sale_date >= DATE_SUB(CURDATE(), INTERVAL 365 DAY)
+          GROUP BY DATE_FORMAT(sale_date,'%Y-%m')
+        `;
+                purchasesSQL = `
+          SELECT DATE_FORMAT(purchase_date,'%Y-%m') AS label, COALESCE(SUM(total_cost),0) AS total
+          FROM purchases
+          WHERE purchase_date >= DATE_SUB(CURDATE(), INTERVAL 365 DAY)
+          GROUP BY DATE_FORMAT(purchase_date,'%Y-%m')
+        `;
+            } else {
+                salesSQL = `
+          SELECT DATE_FORMAT(sale_date,'%Y-%m') AS label, COALESCE(SUM(total_sale),0) AS total
+          FROM sales
+          WHERE warehouse_id=? AND sale_date >= DATE_SUB(CURDATE(), INTERVAL 365 DAY)
+          GROUP BY DATE_FORMAT(sale_date,'%Y-%m')
+        `;
+                purchasesSQL = `
+          SELECT DATE_FORMAT(purchase_date,'%Y-%m') AS label, COALESCE(SUM(total_cost),0) AS total
+          FROM purchases
+          WHERE warehouse_id=? AND purchase_date >= DATE_SUB(CURDATE(), INTERVAL 365 DAY)
+          GROUP BY DATE_FORMAT(purchase_date,'%Y-%m')
+        `;
+                paramsSales = [filterWarehouseId];
+                paramsPurch = [filterWarehouseId];
+            }
         }
 
         db.query(salesSQL, paramsSales, (e1, rs) => {
@@ -2298,15 +2442,23 @@ app.get('/dashboard/series', (req, res) => {
                         const wk = s.slice(4);
                         return `${year}-W${wk.padStart(2, '0')}`;
                     };
-                    (rs || []).forEach(r => mapSales.set(toW(r.raw), Number(r.total || 0)));
-                    (rp || []).forEach(r => mapPurch.set(toW(r.raw), Number(r.total || 0)));
+                    (rs || []).forEach((r) =>
+                        mapSales.set(toW(r.raw), Number(r.total || 0))
+                    );
+                    (rp || []).forEach((r) =>
+                        mapPurch.set(toW(r.raw), Number(r.total || 0))
+                    );
                 } else {
-                    (rs || []).forEach(r => mapSales.set(r.label, Number(r.total || 0)));
-                    (rp || []).forEach(r => mapPurch.set(r.label, Number(r.total || 0)));
+                    (rs || []).forEach((r) =>
+                        mapSales.set(r.label, Number(r.total || 0))
+                    );
+                    (rp || []).forEach((r) =>
+                        mapPurch.set(r.label, Number(r.total || 0))
+                    );
                 }
 
-                const sales = labels.map(l => mapSales.get(l) || 0);
-                const purchases = labels.map(l => mapPurch.get(l) || 0);
+                const sales = labels.map((l) => mapSales.get(l) || 0);
+                const purchases = labels.map((l) => mapPurch.get(l) || 0);
 
                 res.json({ mode, labels, sales, purchases });
             });
@@ -2315,13 +2467,31 @@ app.get('/dashboard/series', (req, res) => {
 });
 
 
-// OUTSTANDING DELIVERIES --> alisin ko rinn
+// DASHBOARD OUTSTANDING DELIVERIES
 app.get('/dashboard/outstanding-deliveries', (req, res) => {
     const limit = Math.max(1, Math.min(100, Number(req.query.limit || 10)));
-    getWarehouseInfo(req, (e, wh) => {
-        if (e) return res.status(401).json({ error: 'Not authenticated' });
 
-        const sql = `
+    getWarehouseInfo(req, (e, wh) => {
+        if (e) {
+            if (e.message === 'Not authenticated') {
+                return res.status(401).json({ error: 'Not authenticated' });
+            }
+            return res.status(500).json({ error: e.message });
+        }
+
+        const role = String(wh.role || '').toLowerCase();
+        const isAdmin = role === 'admin';
+
+        let filterWarehouseId = null;
+        if (!isAdmin) {
+            filterWarehouseId = wh.warehouse_id;
+        } else if (req.query.warehouse_id) {
+            const tmp = Number(req.query.warehouse_id);
+            if (!Number.isNaN(tmp)) filterWarehouseId = tmp;
+        }
+        const isAll = isAdmin && !filterWarehouseId;
+
+        let sql = `
       SELECT 
         s.sales_id,
         s.sale_date,
@@ -2336,17 +2506,119 @@ app.get('/dashboard/outstanding-deliveries', (req, res) => {
       JOIN sales_item si       ON si.sales_id = s.sales_id
       JOIN products p          ON p.product_id = si.product_id
       LEFT JOIN sales_deliveries sd ON sd.sales_item_id = si.sales_item_id
-      WHERE s.warehouse_id = ?
-        AND sd.total_delivered < sd.total_delivery_quantity
-      ORDER BY remaining DESC, s.sale_date ASC
-      LIMIT ?
+      WHERE sd.total_delivered < sd.total_delivery_quantity
     `;
-        db.query(sql, [wh.warehouse_id, limit], (err, rows) => {
+
+        const params = [];
+
+        if (!isAll) {
+            sql += ' AND s.warehouse_id = ?';
+            params.push(filterWarehouseId);
+        }
+
+        sql += ' ORDER BY remaining DESC, s.sale_date ASC LIMIT ?';
+        params.push(limit);
+
+        db.query(sql, params, (err, rows) => {
             if (err) return res.status(500).json({ error: err.message });
             res.json(rows || []);
         });
     });
 });
+
+
+// DASHBOARD WAREHOUSES
+app.get('/dashboard/warehouses', (req, res) => {
+    getWarehouseInfo(req, (e, wh) => {
+        if (e) {
+            if (e.message === 'Not authenticated') {
+                return res.status(401).json({ error: 'Not authenticated' });
+            }
+            return res.status(500).json({ error: e.message });
+        }
+
+        const role = String(wh.role || '').toLowerCase();
+        const isAdmin = role === 'admin';
+
+        if (!isAdmin) {
+            // Warehouse user: only their warehouse
+            return res.json([
+                {
+                    warehouse_id: wh.warehouse_id,
+                    warehouse_name: wh.warehouse_name
+                }
+            ]);
+        }
+
+        const sql =
+            'SELECT warehouse_id, warehouse_name FROM warehouse ORDER BY warehouse_name'; 
+        db.query(sql, [], (err, rows) => {
+            if (err) return res.status(500).json({ error: err.message });
+            res.json(rows || []);
+        });
+    });
+});
+
+
+// DASHBOARD TOP SELLING PRODUCTS
+app.get('/dashboard/top-products', (req, res) => {
+    const limit = Math.max(1, Math.min(20, Number(req.query.limit || 5)));
+
+    getWarehouseInfo(req, (e, wh) => {
+        if (e) {
+            if (e.message === 'Not authenticated') {
+                return res.status(401).json({ error: 'Not authenticated' });
+            }
+            return res.status(500).json({ error: e.message });
+        }
+
+        const role = String(wh.role || '').toLowerCase();
+        const isAdmin = role === 'admin';
+
+        let filterWarehouseId = null;
+        if (!isAdmin) {
+            // Warehouse user → only their warehouse
+            filterWarehouseId = wh.warehouse_id;
+        } else if (req.query.warehouse_id) {
+            const tmp = Number(req.query.warehouse_id);
+            if (!Number.isNaN(tmp)) filterWarehouseId = tmp;
+        }
+        const isAll = isAdmin && !filterWarehouseId;
+
+        let sql = `
+      SELECT 
+        si.product_id,
+        p.product_name,
+        SUM(si.product_quantity) AS total_qty
+      FROM sales_item si
+      JOIN sales s   ON s.sales_id   = si.sales_id
+      JOIN products p ON p.product_id = si.product_id
+    `;
+        const params = [];
+
+        if (!isAll) {
+            sql += ' WHERE s.warehouse_id = ?';
+            params.push(filterWarehouseId);
+        }
+
+        sql += `
+      GROUP BY si.product_id, p.product_name
+      ORDER BY total_qty DESC
+      LIMIT ?
+    `;
+        params.push(limit);
+
+        db.query(sql, params, (err, rows) => {
+            if (err) return res.status(500).json({ error: err.message });
+            res.json(rows || []);
+        });
+    });
+});
+
+
+
+
+
 
 
 // Warehouse ->>>>>>>>>>>>
