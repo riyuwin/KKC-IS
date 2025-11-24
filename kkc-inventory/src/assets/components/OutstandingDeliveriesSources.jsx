@@ -3,7 +3,13 @@ import { MdFileDownload } from "react-icons/md";
 import ExcelJS from "exceljs";
 import { saveAs } from "file-saver";
 
-export default function StockFilter({ stockStatus, onStatusChange, sx, dataToExport, tab }) {
+export default function OutstandingDeliveriesFilter({
+    stockStatus,
+    onStatusChange,
+    sx,
+    dataToExport,
+    tab
+}) {
     const handleExportExcel = async () => {
         console.log("📦 DATA TO EXPORT:", dataToExport);
 
@@ -12,29 +18,35 @@ export default function StockFilter({ stockStatus, onStatusChange, sx, dataToExp
             return;
         }
 
-        // 🔹 Determine title based on selected stock status
-        let titleText = "KKC Inventory System - Inventory Summary";
-        if (stockStatus === "in_stock") titleText = "KKC Inventory System - In Stock Summary";
-        else if (stockStatus === "low_stock") titleText = "KKC Inventory System - Low Stock Summary";
-        else if (stockStatus === "out_of_stock") titleText = "KKC Inventory System - Out of Stock Summary";
+        // 🔹 Title
+        let titleText = "KKC Inventory System - Outstanding Deliveries Summary";
+        if (stockStatus === "sales") titleText = "KKC Inventory System - Outstanding Deliveries Sales Summary";
+        else if (stockStatus === "purchases") titleText = "KKC Inventory System - Outstanding Deliveries Purchase Summary";
 
-        // 🔹 Prepare export data
-        const exportData = dataToExport.map((row, index) => ({
-            "No.": index + 1,
-            "Product Name": row.product_name  || "N/A",
-            "SKU": row.sku || "N/A",
-            "Selling Price": row.selling_price || 0,
-            "Stock Quantity": row.stock || 0,
-            "Supplier Name": row.supplier_name || 0,
-            "Warehouse Name": row.warehouse_name || 0, 
-            "Stock Status": row.stock_status || "N/A",
-        }));
+        // 🔹 Prepare export data (fixed)
+        const exportData = dataToExport.map((row, index) => {
+            const deliveries = row.deliveries || row; // fallback for different structures
 
-        // 🔹 Create workbook and worksheet
+            return {
+                "No.": index + 1,
+                "Customer Name": row.customer_name || row.sales_customer_name || "N/A",
+                "Product": row.product?.product_name || row.sales_product_name || "N/A",
+                "Total Order": deliveries.total_delivery_quantity || deliveries.order_quantity || 0,
+                "Total Delivered": deliveries.total_delivered || deliveries.qty_received || 0,
+                "Remaining Deliveries":
+                    (deliveries.total_delivery_quantity || deliveries.order_quantity || 0) -
+                    (deliveries.total_delivered || deliveries.qty_received || 0),
+                "Warehouse Name": row.warehouse?.warehouse_name || row.warehouse_name || "N/A",
+                "Latest Delivery Date": deliveries.updated_at || deliveries.sales_date || "N/A",
+                "Stock Status": row.stock_status || row.source || "N/A",
+            };
+        });
+
+        // 🔹 Create workbook
         const workbook = new ExcelJS.Workbook();
-        const worksheet = workbook.addWorksheet("Inventory Summary", {
+        const worksheet = workbook.addWorksheet("Outstanding Deliveries Summary", {
             pageSetup: {
-                paperSize: 9, // A4
+                paperSize: 9,
                 orientation: "landscape",
                 fitToPage: true,
                 fitToWidth: 1,
@@ -42,8 +54,8 @@ export default function StockFilter({ stockStatus, onStatusChange, sx, dataToExp
             },
         });
 
-        // 🔹 Title Row (Row 1)
-        const totalColumns = 8;
+        // 🔹 Title Row
+        const totalColumns = Object.keys(exportData[0]).length;
         worksheet.mergeCells(1, 1, 1, totalColumns);
         const titleCell = worksheet.getCell("A1");
         titleCell.value = titleText;
@@ -56,9 +68,10 @@ export default function StockFilter({ stockStatus, onStatusChange, sx, dataToExp
             right: { style: "thin" },
         };
 
-        // 🔹 Header Row (Row 2)
+        // 🔹 Header Row
         const headers = Object.keys(exportData[0]);
         const headerRow = worksheet.getRow(2);
+
         headers.forEach((header, i) => {
             const cell = headerRow.getCell(i + 1);
             cell.value = header;
@@ -72,7 +85,7 @@ export default function StockFilter({ stockStatus, onStatusChange, sx, dataToExp
             };
         });
 
-        // 🔹 Data Rows (start Row 3)
+        // 🔹 Data Rows
         exportData.forEach((row, rowIndex) => {
             const newRow = worksheet.getRow(rowIndex + 3);
             Object.values(row).forEach((val, colIndex) => {
@@ -95,12 +108,12 @@ export default function StockFilter({ stockStatus, onStatusChange, sx, dataToExp
             { width: 25 },
             { width: 18 },
             { width: 18 },
-            { width: 15 },
-            { width: 18 },
-            { width: 18 },
+            { width: 20 },
+            { width: 22 },
+            { width: 16 },
         ];
 
-        // 🔹 Export Excel file
+        // 🔹 Export Excel
         const buffer = await workbook.xlsx.writeBuffer();
         saveAs(new Blob([buffer]), `${titleText.replace(/\s+/g, "_")}.xlsx`);
     };
@@ -111,7 +124,7 @@ export default function StockFilter({ stockStatus, onStatusChange, sx, dataToExp
             <TextField
                 select
                 size="small"
-                label="Stock Status"
+                label="Outstanding Deliveries Source"
                 value={stockStatus || ""}
                 onChange={(e) => onStatusChange(e.target.value)}
                 sx={{
@@ -120,10 +133,9 @@ export default function StockFilter({ stockStatus, onStatusChange, sx, dataToExp
                     ...sx,
                 }}
             >
-                <MenuItem value="">All</MenuItem>
-                <MenuItem value="in_stock">In Stock</MenuItem>
-                <MenuItem value="low_stock">Low Stock</MenuItem>
-                <MenuItem value="out_of_stock">Out of Stock</MenuItem>
+                <MenuItem value="all">All</MenuItem>
+                <MenuItem value="sales">Sales</MenuItem>
+                <MenuItem value="purchases">Purchases</MenuItem>
             </TextField>
 
             {/* Export Button */}

@@ -11,7 +11,7 @@ import DueDatesDialog from "./DueDatesDialog";
 import { CheckDueDatesRecord, UpdateDueDates } from "../logics/bills/ManageDueDates";
 import Swal from "sweetalert2";
 
-function ManageDueDatesTable({ setDataToExport }) {
+function ManageDueDatesTable({ stockStatus, setDataToExport }) {
     const [rows, setRows] = useState([]);
     const [loading, setLoading] = useState(false);
     const [search, setSearch] = useState("");
@@ -48,11 +48,24 @@ function ManageDueDatesTable({ setDataToExport }) {
 
     // === Filter rows based on search ===
     const filteredRows = useMemo(() => {
-        return rows.filter(bill =>
-            (bill.client_merchant || "").toLowerCase().includes(searchNow.toLowerCase()) ||
-            (bill.company || "").toLowerCase().includes(searchNow.toLowerCase())
-        );
-    }, [rows, searchNow]);
+        return rows
+            .filter(bill => {
+                // --- Search Filter ---
+                const matchesSearch =
+                    (bill.client_merchant || "").toLowerCase().includes(searchNow.toLowerCase()) ||
+                    (bill.company || "").toLowerCase().includes(searchNow.toLowerCase());
+
+                // --- Year Filter (stockStatus) ---
+                if (stockStatus && stockStatus !== "All") {
+                    const year = new Date(bill.payment_date).getFullYear();
+                    if (isNaN(year)) return false; // No payment_date → exclude
+                    if (String(year) !== String(stockStatus)) return false;
+                }
+
+                return matchesSearch;
+            });
+    }, [rows, searchNow, stockStatus]);
+
 
     // === Sorting ===
     const sortedRows = useMemo(

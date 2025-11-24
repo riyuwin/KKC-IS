@@ -36,8 +36,7 @@ function Bills() {
           <Tab label="Due Dates" {...a11yProps(1)} sx={{ fontWeight: 600, fontSize: "1rem", textTransform: "none" }} />
         </Tabs>
       </Box>
-
-      {/* ✅ Pass correct props */}
+ 
       {tab === 1 && (
         <DueDatesFilter
           stockStatus={stockStatus}

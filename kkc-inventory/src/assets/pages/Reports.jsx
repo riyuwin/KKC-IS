@@ -8,6 +8,7 @@ import PurchaseReportTable from "../components/PurchaseReportTable";
 import ProductReportTable from "../components/ProductReportTable";
 import StockFilter from "../components/StockFilter";
 import OutstandingDeliveriesTable from "../components/OutstandingDeliveriesTable";
+import OutstandingDeliveriesFilter from "../components/OutstandingDeliveriesSources";
 
 // A11y Helpers for Tabs
 function a11yProps(index) {
@@ -69,7 +70,7 @@ function Reports() {
           </>
         ) : tab === 3 ? (
           <>  
-            <StockFilter stockStatus={stockStatus}
+            <OutstandingDeliveriesFilter stockStatus={stockStatus}
                   onStatusChange={setStockStatus}
                   dataToExport={dataToExport}
                   tab={tab}/> 
