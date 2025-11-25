@@ -27,11 +27,20 @@ const swalConfirm = async (title, text) => {
   return res.isConfirmed;
 };
 
-async function fetchPurchases(search = '') {
+// now accepts warehouseId for admin filter + sends cookies  
+async function fetchPurchases(search = '', warehouseId = null) {      
   try {
     const url = new URL(PortPurchases);
     if (search) url.searchParams.set('search', search);
-    const res = await fetch(url.toString(), { method: 'GET' });
+    if (warehouseId && warehouseId !== 'all') {                      
+      url.searchParams.set('warehouse_id', warehouseId);             
+    }                                                                
+
+    const res = await fetch(url.toString(), {
+      method: 'GET',
+      credentials: 'include',                                        
+    });
+
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Failed to fetch purchases');
     return data;
@@ -49,6 +58,7 @@ async function createPurchase(payload) {
     const res = await fetch(PortPurchases, {
       method: 'POST',
       headers,
+      credentials: 'include',                                       
       body: JSON.stringify(payload),
     });
     const data = await res.json();
@@ -80,6 +90,7 @@ async function createBulkPurchase(payload) {
     const res = await fetch(`${PortPurchases}/bulk`, {
       method: 'POST',
       headers,
+      credentials: 'include',                                       
       body: JSON.stringify(payload),
     });
     const data = await res.json();
@@ -107,6 +118,7 @@ async function updatePurchase(id, payload) {
     const res = await fetch(`${PortPurchases}/${id}`, {
       method: 'PUT',
       headers,
+      credentials: 'include',                                       
       body: JSON.stringify(payload),
     });
     const data = await res.json();
@@ -142,7 +154,10 @@ async function deletePurchase(id, displayLabel) {
   if (!result.isConfirmed) return { cancelled: true };
 
   try {
-    const res = await fetch(`${PortPurchases}/${id}`, { method: 'DELETE' });
+    const res = await fetch(`${PortPurchases}/${id}`, {
+      method: 'DELETE',
+      credentials: 'include',                                      
+    });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Delete failed');
 

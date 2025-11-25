@@ -681,15 +681,41 @@ function applyReceivedToStock({ product_id, qty_received_delta, purchase_id }, c
 // ====== PURCHASES API ======
 
 // GET /purchases?search=...
-// Returns one row per purchase item, with a unified supplier_id/supplier_name
-app.get("/purchases", (req, res) => {
+app.get("/purchases", (req, res) => {                   
     const search = (req.query.search || "").trim();
     const like = `%${search}%`;
 
-    const sql = `
+    const userRole = req.session?.user?.role || "warehouse";         
+    const isAdmin = String(userRole).toLowerCase() === "admin";      
+
+    const qWarehouseParam = (req.query.warehouse_id || "").trim();   
+
+    const where = [];                                                
+    const params = [];                                               
+
+    if (search) {                                                   
+        where.push(
+            "(s.supplier_name LIKE ? OR si.supplier_name LIKE ? OR p.product_name LIKE ?)"
+        );
+        params.push(like, like, like);
+    }
+
+    function runQuery(enforcedWarehouseId = null) {                
+        if (!isAdmin) {
+            // warehouse account: enforce their own warehouse
+            where.push("pu.warehouse_id = ?");
+            params.push(enforcedWarehouseId);
+        } else if (qWarehouseParam && qWarehouseParam.toLowerCase() !== "all") {
+            // admin filter by dropdown
+            where.push("pu.warehouse_id = ?");
+            params.push(Number(qWarehouseParam));
+        }
+
+        const sql = `
     SELECT 
       pu.purchase_id,
       pu.purchase_date,
+      pu.warehouse_id,                               -- [ADDED]
 
       -- header-level supplier (for reference)
       pu.supplier_id                    AS header_supplier_id,
@@ -722,16 +748,28 @@ app.get("/purchases", (req, res) => {
     JOIN purchase_items pi ON pi.purchase_id = pu.purchase_id
     JOIN products p        ON p.product_id   = pi.product_id
     LEFT JOIN suppliers si ON si.supplier_id = pi.supplier_id
-    ${search ? "WHERE s.supplier_name LIKE ? OR si.supplier_name LIKE ? OR p.product_name LIKE ?" : ""}
+    ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
     ORDER BY pu.purchase_date DESC, pu.purchase_id DESC, pi.purchase_item_id ASC
   `;
+        db.query(sql, params, (err, rows) => {
+            if (err) return res.status(500).json({ error: err.message });
+            res.json(rows);
+        });
+    }
 
-    const params = search ? [like, like, like] : [];
-    db.query(sql, params, (err, rows) => {
-        if (err) return res.status(500).json({ error: err.message });
-        res.json(rows);
+    if (isAdmin) {                                                     
+        // admin: can see all (or filter via ?warehouse_id)
+        return runQuery(null);
+    }
+
+    getSessionWarehouseId(req, (eWh, wid) => {                         
+        if (eWh || !wid) {
+            return res.status(401).json({ error: "No warehouse for session" });
+        }
+        runQuery(wid);
     });
 });
+
 
 
 // POST /purchases  (create ONE purchase + ONE item)
@@ -1732,7 +1770,7 @@ function adjustProductStock({ product_id, delta }, cb) {
 
                 conn.query('UPDATE products SET stock=? WHERE product_id=?', [next, pid], e2 => {
                     if (e2) return conn.rollback(() => { conn.release(); cb?.(e2); });
-                    const status = computeStockStatus(next); 
+                    const status = computeStockStatus(next);
                     conn.query('UPDATE products SET stock_status=? WHERE product_id=?', [status, pid], e3 => {
                         if (e3) return conn.rollback(() => { conn.release(); cb?.(e3); });
                         conn.commit(e4 => { conn.release(); cb?.(e4 || null); });
@@ -1759,11 +1797,11 @@ function getSessionWarehouseId(req, cb) {
 
 
 // Get warehouse + role info of the logged in account  
-function getWarehouseInfo(req, cb) {                   
-    const user = req.session?.user;                 
-    if (!user || !user.account_id) {                
-        return cb(new Error('Not authenticated'));  
-    }                                               
+function getWarehouseInfo(req, cb) {
+    const user = req.session?.user;
+    if (!user || !user.account_id) {
+        return cb(new Error('Not authenticated'));
+    }
 
     const sql = `
     SELECT 
@@ -1775,7 +1813,7 @@ function getWarehouseInfo(req, cb) {
     LEFT JOIN warehouse w ON w.warehouse_id = a.warehouse_id
     WHERE a.account_id = ? 
     LIMIT 1
-  `;                                               
+  `;
 
     db.query(sql, [user.account_id], (err, rows) => {
         if (err) return cb(err);
@@ -1784,7 +1822,7 @@ function getWarehouseInfo(req, cb) {
         const row = rows[0];
         cb(null, {
             account_id: row.account_id,
-            role: row.role,                         
+            role: row.role,
             warehouse_id: row.warehouse_id,
             warehouse_name: row.warehouse_name || 'Warehouse'
         });
@@ -2210,30 +2248,30 @@ app.delete('/returns/purchase/:id', (req, res) => {
 app.get('/dashboard/summary', (req, res) => {
     getWarehouseInfo(req, (e, wh) => {
         if (e) {
-            if (e.message === 'Not authenticated') {        
+            if (e.message === 'Not authenticated') {
                 return res.status(401).json({ error: 'Not authenticated' })
             }
             return res.status(500).json({ error: e.message })
         }
 
-        const role = String(wh.role || '').toLowerCase();     
-        const isAdmin = role === 'admin';                     
+        const role = String(wh.role || '').toLowerCase();
+        const isAdmin = role === 'admin';
 
-        let filterWarehouseId = null;                         
+        let filterWarehouseId = null;
 
         if (!isAdmin) {
-            filterWarehouseId = wh.warehouse_id;              
+            filterWarehouseId = wh.warehouse_id;
         } else if (req.query.warehouse_id) {
             const tmp = Number(req.query.warehouse_id);
             if (!Number.isNaN(tmp)) filterWarehouseId = tmp;
         }
 
-        const isAll = isAdmin && !filterWarehouseId;        
+        const isAll = isAdmin && !filterWarehouseId;
 
-        let qSales, qPurchases, qProducts;                    
+        let qSales, qPurchases, qProducts;
         let paramsSales = [];
         let paramsPurch = [];
-        let paramsProducts = [];                            
+        let paramsProducts = [];
 
         if (isAll) {
             // Admin, ALL warehouses
@@ -2247,15 +2285,15 @@ app.get('/dashboard/summary', (req, res) => {
             qPurchases =
                 'SELECT COALESCE(SUM(total_cost),0) AS total FROM purchases WHERE warehouse_id=?';
             qProducts =
-                'SELECT COUNT(*) AS cnt FROM products WHERE warehouse_id=?'; 
+                'SELECT COUNT(*) AS cnt FROM products WHERE warehouse_id=?';
 
             paramsSales = [filterWarehouseId];
             paramsPurch = [filterWarehouseId];
-            paramsProducts = [filterWarehouseId];               
+            paramsProducts = [filterWarehouseId];
         }
 
         const qWhInfo =
-            'SELECT warehouse_id, warehouse_name FROM warehouse WHERE warehouse_id=?'; 
+            'SELECT warehouse_id, warehouse_name FROM warehouse WHERE warehouse_id=?';
 
         function runTotals(warehouseRow) {
             db.query(qSales, paramsSales, (e1, r1) => {
@@ -2551,7 +2589,7 @@ app.get('/dashboard/warehouses', (req, res) => {
         }
 
         const sql =
-            'SELECT warehouse_id, warehouse_name FROM warehouse ORDER BY warehouse_name'; 
+            'SELECT warehouse_id, warehouse_name FROM warehouse ORDER BY warehouse_name';
         db.query(sql, [], (err, rows) => {
             if (err) return res.status(500).json({ error: err.message });
             res.json(rows || []);

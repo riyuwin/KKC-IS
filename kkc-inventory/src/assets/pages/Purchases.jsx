@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Box, Paper, Typography, Button, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, IconButton, CircularProgress, Tooltip, Chip, Stack, } from "@mui/material";
+import { Box, Paper, Typography, Button, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, IconButton, CircularProgress, Tooltip, Chip, Stack, TextField, MenuItem } from "@mui/material";
 import { MdAdd, MdVisibility, MdEdit, MdDelete } from "react-icons/md";
 import PurchasesCRUD from "../logics/purchases/PurchasesCRUD";
 import SortableHeader, { getComparator, stableSort } from "../components/SortableHeader";
@@ -53,6 +53,10 @@ function Purchases() {
 
   const [search, setSearch] = useState("");
   const [searchNow, setSearchNow] = useState("");
+ 
+  const [role, setRole] = useState(""); 
+  const [warehouses, setWarehouses] = useState([]);    
+  const [selectedWarehouse, setSelectedWarehouse] = useState("all"); 
 
   const [open, setOpen] = useState(false);
   const [dialogMode, setDialogMode] = useState("create");
@@ -67,10 +71,36 @@ function Purchases() {
     setOrderBy(property);
   };
 
+  // debounce search
   useEffect(() => {
     const t = setTimeout(() => setSearchNow(search), 150);
     return () => clearTimeout(t);
   }, [search]);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const sres = await fetch("/session", { credentials: "include" });
+        const sdata = await sres.json();
+        const r = String(sdata?.user?.role || "").toLowerCase();
+        setRole(r);
+
+        if (r === "admin") {
+          const wres = await fetch("/warehouse", { credentials: "include" });
+          const wdata = await wres.json();
+          const list = Array.isArray(wdata) ? wdata : [];
+          setWarehouses(
+            list.map((w) => ({
+              warehouse_id: w.warehouse_id,
+              warehouse_name: w.warehouse_name || `Warehouse #${w.warehouse_id}`,
+            }))
+          );
+        }
+      } catch {
+        // ignore
+      }
+    })();
+  }, []);
 
   async function loadMeta() {
     try {
@@ -93,7 +123,8 @@ function Purchases() {
   async function load() {
     setLoading(true);
     try {
-      const data = await PurchasesCRUD.fetchPurchases(searchNow);
+      const warehouseId = role === "admin" ? selectedWarehouse : null;
+      const data = await PurchasesCRUD.fetchPurchases(searchNow, warehouseId); 
       setRows(Array.isArray(data) ? data : []);
     } finally {
       setLoading(false);
@@ -105,7 +136,7 @@ function Purchases() {
   }, []);
   useEffect(() => {
     load();
-  }, [searchNow]);
+  }, [searchNow, role, selectedWarehouse]); // include role + selectedWarehouse
 
   const computedRows = useMemo(
     () =>
@@ -126,7 +157,6 @@ function Purchases() {
     row.item_supplier_id ??
     row.header_supplier_id ??
     null;
-
 
   const headerCellSx = {
     py: 3.0,
@@ -199,25 +229,24 @@ function Purchases() {
     setOpen(true);
   };
 
-
   const handleDelete = async (row) => {
     const res = await PurchasesCRUD.deletePurchase(row.purchase_id, row.purchase_id);
     if (!res?.cancelled) await load();
   };
 
-  // widths for colgroup 
+  // widths for colgroup
   const colWidths = [
-    "9%", // Date
+    "9%",  // Date
     "10%", // Supplier
     "11%", // Product
     "10%", // Purchased
     "10%", // Received
-    "9%", // Remaining
-    "7%", // Unit ₱
-    "8%", // Total ₱
+    "9%",  // Remaining
+    "7%",  // Unit ₱
+    "8%",  // Total ₱
     "10%", // Order
-    "8%", // Payment
-    "8%", // Actions
+    "8%",  // Payment
+    "8%",  // Actions
   ];
 
   return (
@@ -233,22 +262,51 @@ function Purchases() {
         sx={{ mb: 2, px: 1 }}
         spacing={2}
       >
-        <SearchBar search={search} onSearchChange={setSearch} placeholder="Search purchases..." />
-        <Button
-          component={Link}
-          to="/purchases/new"
-          variant="contained"
-          startIcon={<MdAdd />}
-          sx={{
-            bgcolor: "#E67600",
-            "&:hover": { bgcolor: "#f99f3fff" },
-            textTransform: "none",
-            fontWeight: 600,
-            borderRadius: 2,
-          }}
-        >
-          Add Purchase
-        </Button>
+        <SearchBar
+          search={search}
+          onSearchChange={setSearch}
+          placeholder="Search purchases..."
+        />
+
+        <Stack direction="row" spacing={2} alignItems="center">
+          {role === "admin" && (
+            <TextField
+              select
+              size="small"
+              label="Warehouse"
+              value={selectedWarehouse}
+              onChange={(e) => setSelectedWarehouse(e.target.value)}
+              sx={{ minWidth: 220 }}
+            >
+              <MenuItem value="all">All Warehouses</MenuItem>
+              {warehouses.map((w) => (
+                <MenuItem
+                  key={w.warehouse_id}
+                  value={String(w.warehouse_id)}
+                >
+                  {w.warehouse_name}
+                </MenuItem>
+              ))}
+            </TextField>
+          )}
+
+          <Button
+            component={Link}
+            to="/purchases/new"
+            variant="contained"
+            startIcon={<MdAdd />}
+            sx={{
+              bgcolor: "#E67600",
+              "&:hover": { bgcolor: "#f99f3fff" },
+              textTransform: "none",
+              fontWeight: 600,
+              borderRadius: 2,
+            }}
+            onClick={openCreate}
+          >
+            Add Purchase
+          </Button>
+        </Stack>
       </Stack>
 
       <Paper elevation={1} sx={{ borderRadius: 2, bgcolor: "transparent", boxShadow: "none" }}>
@@ -263,7 +321,7 @@ function Purchases() {
         >
           <TablePager
             data={sortedRows}
-            resetOn={`${order}-${orderBy}-${searchNow}`}
+            resetOn={`${order}-${orderBy}-${searchNow}-${selectedWarehouse}`}
             initialRowsPerPage={5}
             align="left"
           >
@@ -379,14 +437,24 @@ function Purchases() {
                     ) : (
                       pagedRows.map((row) => (
                         <TableRow key={`${row.purchase_id}-${row.purchase_item_id}`}>
-                          <TableCell sx={wrapCellSx}>{dateFormat(row.purchase_date)}</TableCell>
-                          <TableCell title={row.supplier_name}>{row.supplier_name}</TableCell>
-                          <TableCell title={row.product_name}>{row.product_name}</TableCell>
-                          <TableCell title={String(row.quantity)}>{row.quantity}</TableCell>
+                          <TableCell sx={wrapCellSx}>
+                            {dateFormat(row.purchase_date)}
+                          </TableCell>
+                          <TableCell title={row.supplier_name}>
+                            {row.supplier_name}
+                          </TableCell>
+                          <TableCell title={row.product_name}>
+                            {row.product_name}
+                          </TableCell>
+                          <TableCell title={String(row.quantity)}>
+                            {row.quantity}
+                          </TableCell>
                           <TableCell title={String(row.qty_received)}>
                             {row.qty_received}
                           </TableCell>
-                          <TableCell title={String(row.remaining)}>{row.remaining}</TableCell>
+                          <TableCell title={String(row.remaining)}>
+                            {row.remaining}
+                          </TableCell>
                           <TableCell title={peso(row.unit_cost)}>
                             {peso(row.unit_cost)}
                           </TableCell>
@@ -401,7 +469,9 @@ function Purchases() {
                               sx={{ px: 0.9, maxWidth: "none" }}
                             />
                           </TableCell>
-                          <TableCell sx={wrapCellSx}>{row.purchase_payment_status}</TableCell>
+                          <TableCell sx={wrapCellSx}>
+                            {row.purchase_payment_status}
+                          </TableCell>
                           <TableCell>
                             <Stack direction="row" justifyContent="center" spacing={-0.4}>
                               <Tooltip title="View">
