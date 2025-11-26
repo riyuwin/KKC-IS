@@ -30,7 +30,7 @@ function peso(n) {
   return num.toLocaleString("en-PH", { style: "currency", currency: "PHP", minimumFractionDigits: 2 });
 }
 
-function OutstandingDeliveriesTable({ stockStatus = "", setDataToExport }) {
+function OutstandingDeliveriesTable({ stockStatus, setDataToExport }) {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState("");
@@ -47,6 +47,8 @@ function OutstandingDeliveriesTable({ stockStatus = "", setDataToExport }) {
   const [salesData, setSalesData] = useState({});
 
   const closeDialog = () => { setOpen(false); setSelectedId(null); setFormData({}); };
+
+  console.log("TETATA: ", stockStatus);
 
   const openView = (row) => {
     setDialogMode("view");
@@ -165,13 +167,24 @@ function OutstandingDeliveriesTable({ stockStatus = "", setDataToExport }) {
     });
   }, [rows]);
 
+  console.log("ASGS: ", stockStatus);
+
+  // Filter by stockStatus: "all" | "sales" | "purchase"
   const filteredRows = useMemo(() => {
-    if (!stockStatus) return computedRows;
-    return computedRows.filter(row => {
-      const status = row._stockStatus.label.toLowerCase().replace(" ", "_");
-      return status === stockStatus;
-    });
+    if (!stockStatus || stockStatus === "all") return computedRows;
+
+    if (stockStatus === "sales") {
+      return computedRows.filter(row => row.source === "sales");
+    }
+
+    if (stockStatus === "purchase") {
+      return computedRows.filter(row => row.source === "purchase");
+    }
+
+    return computedRows;
   }, [computedRows, stockStatus]);
+
+
 
   const salesOutstanding = useMemo(() => {
     if (!salesDeliveries || !salesItems || !products || !sales) return [];
@@ -210,12 +223,21 @@ function OutstandingDeliveriesTable({ stockStatus = "", setDataToExport }) {
       });
   }, [salesDeliveries, sales, salesItems, salesAttachments, products]);
 
-
-
   const deliveriesWithRemaining = useMemo(() => {
-    const purchaseOutstanding = filteredRows.filter(row => Number(row.remaining) > 0);
-    return [...purchaseOutstanding, ...salesOutstanding];
-  }, [filteredRows, salesOutstanding]);
+    if (stockStatus === "purchase") {
+      return filteredRows.filter(row => Number(row.remaining) > 0);
+    }
+
+    if (stockStatus === "sales") {
+      return salesOutstanding.filter(row => Number(row.remaining) > 0);
+    }
+
+    // "all" case
+    const purchaseOutstanding = filteredRows.filter(row => row.source === "purchase" && Number(row.remaining) > 0);
+    const salesOutstandingRows = salesOutstanding.filter(row => row.source === "sales" && Number(row.remaining) > 0);
+    return [...purchaseOutstanding, ...salesOutstandingRows];
+  }, [filteredRows, salesOutstanding, stockStatus]);
+
 
   const sortedRows = useMemo(
     () => stableSort(deliveriesWithRemaining, getComparator(order, orderBy)),
@@ -248,7 +270,7 @@ function OutstandingDeliveriesTable({ stockStatus = "", setDataToExport }) {
 
     return [
       { name: "Purchases", qty: purchaseOutstanding.length },
-      { name: "Sales Deliveries", qty: salesOutstandingRows.length },
+      { name: "Sales", qty: salesOutstandingRows.length },
     ];
   }, [filteredRows, salesOutstanding]);
 

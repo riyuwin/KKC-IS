@@ -21,6 +21,7 @@ function ManageDueDatesTable({ stockStatus, setDataToExport }) {
     const [openDialog, setOpenDialog] = useState(false);
     const [modalType, setModalType] = useState(null);
     const [selectedBill, setSelectedBill] = useState(null);
+    const [monthFilter, setMonthFilter] = useState("this_month");
 
     // === Fetch due dates on mount ===
     const fetchDueDates = async () => {
@@ -48,23 +49,34 @@ function ManageDueDatesTable({ stockStatus, setDataToExport }) {
 
     // === Filter rows based on search ===
     const filteredRows = useMemo(() => {
-        return rows
-            .filter(bill => {
-                // --- Search Filter ---
-                const matchesSearch =
-                    (bill.client_merchant || "").toLowerCase().includes(searchNow.toLowerCase()) ||
-                    (bill.company || "").toLowerCase().includes(searchNow.toLowerCase());
+        return rows.filter(bill => {
 
-                // --- Year Filter (stockStatus) ---
-                if (stockStatus && stockStatus !== "All") {
-                    const year = new Date(bill.payment_date).getFullYear();
-                    if (isNaN(year)) return false; // No payment_date → exclude
-                    if (String(year) !== String(stockStatus)) return false;
-                }
+            const billDate = new Date(bill.added_at);
+            if (!bill.payment_date || isNaN(billDate)) return false;
 
-                return matchesSearch;
-            });
-    }, [rows, searchNow, stockStatus]);
+            const today = new Date();
+            const billMonth = billDate.getMonth();
+            const billYear = billDate.getFullYear();
+
+            // --- MONTH FILTER ---
+            if (monthFilter === "this_month") {
+                if (billMonth !== today.getMonth() || billYear !== today.getFullYear())
+                    return false;
+            } else if (monthFilter !== "all") {
+                const selectedMonth = Number(monthFilter);
+                if (billMonth !== selectedMonth) return false;
+            }
+
+            // --- SEARCH FILTER ---
+            const matchesSearch =
+                (bill.client_merchant || "").toLowerCase().includes(searchNow.toLowerCase()) ||
+                (bill.company || "").toLowerCase().includes(searchNow.toLowerCase());
+
+            return matchesSearch;
+        });
+    }, [rows, searchNow, monthFilter]);
+
+
 
 
     // === Sorting ===
@@ -110,11 +122,32 @@ function ManageDueDatesTable({ stockStatus, setDataToExport }) {
         <Box sx={{ p: 2, fontFamily: "Poppins, sans-serif" }}>
             <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 3 }}>
                 <Typography variant="h4" sx={{ fontWeight: 700 }}>
-                    Due Dates (This Month)
+                    Due Dates (This Year)
                 </Typography>
             </Stack>
 
-            <SearchBar search={search} onSearchChange={setSearch} />
+            <Stack direction="row" spacing={2} sx={{ my: 2 }}>
+                <SearchBar search={search} onSearchChange={setSearch} />
+
+                <select
+                    value={monthFilter}
+                    onChange={(e) => setMonthFilter(e.target.value)}
+                    style={{
+                        padding: "8px",
+                        borderRadius: "6px",
+                        border: "1px solid #ccc",
+                        fontSize: "0.9rem"
+                    }}
+                >
+                    <option value="this_month">This Month</option>
+                    <option value="all">All Months</option>
+                    {Array.from({ length: 12 }).map((_, i) => (
+                        <option key={i} value={i}>{new Date(0, i).toLocaleString("en-US", { month: "long" })}</option>
+                    ))}
+                </select>
+            </Stack> 
+
+            {/* <SearchBar search={search} onSearchChange={setSearch} /> */}
 
             <Paper elevation={1} sx={{ mt: 3, borderRadius: 2 }}>
                 <TableContainer>

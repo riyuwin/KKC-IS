@@ -1257,8 +1257,248 @@ app.post("/purchases/bulk", (req, res) => {
     });
 });
 
+// -------------------------
+// POST /sales/bulk
+// -------------------------
+app.post("/sales/bulk", async (req, res) => {
+    const {
+        sales_id, // ← optional, existing sale
+        account_id,
+        warehouse_id,
+        sale_date,
+        customer_name,
+        total_sale,
+        sale_payment_status,
+        delivery_status,
+        items
+    } = req.body;
+
+    const attachments = req.files || [];
+
+    // ================================
+    // LOGGING
+    // ================================
+    console.log("===== Received Payload =====");
+    console.log("sales_id:", sales_id);
+    console.log("account_id:", account_id);
+    console.log("warehouse_id:", warehouse_id);
+    console.log("sale_date:", sale_date);
+    console.log("customer_name:", customer_name);
+    console.log("total_sale:", total_sale);
+    console.log("sale_payment_status:", sale_payment_status);
+    console.log("delivery_status:", delivery_status);
+    console.log("items:", items);
+    console.log("attachments:", attachments);
+    console.log("============================");
+
+    // Validate ROOT fields
+    if (
+        !account_id ||
+        !warehouse_id ||
+        !sale_date ||
+        !customer_name ||
+        total_sale == null ||
+        !sale_payment_status ||
+        !delivery_status ||
+        !Array.isArray(items) ||
+        items.length === 0
+    ) {
+        console.error("❌ Missing required information");
+        return res.status(400).json({ error: "Missing required information." });
+    }
+
+    try {
+        let salesId = sales_id;
+
+        // ----------------------------
+        // INSERT or UPDATE main sale
+        // ----------------------------
+        if (salesId) {
+            // UPDATE existing sale
+            const updateSaleQuery = `
+                UPDATE sales
+                SET warehouse_id = ?, sale_date = ?, customer_name = ?,
+                    total_sale = ?, delivery_status = ?, sale_payment_status = ?, updated_at = NOW()
+                WHERE sales_id = ?
+            `;
+            await executeQueryWithPromise(updateSaleQuery, [
+                warehouse_id,
+                sale_date,
+                customer_name,
+                total_sale,
+                delivery_status,
+                sale_payment_status,
+                salesId
+            ]);
+            console.log("✔ Updated sale with ID:", salesId);
+        } else {
+            // INSERT new sale
+            const insertSalesQuery = `
+                INSERT INTO sales (
+                    account_id, warehouse_id, sale_date, customer_name,
+                    total_sale, delivery_status, sale_payment_status,
+                    created_at, updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
+            `;
+            const saleResult = await executeQueryWithPromise(insertSalesQuery, [
+                account_id,
+                warehouse_id,
+                sale_date,
+                customer_name,
+                total_sale,
+                delivery_status,
+                sale_payment_status
+            ]);
+            salesId = saleResult.insertId;
+            console.log("✔ Inserted new sale with ID:", salesId);
+        }
+
+        // ----------------------------
+        // Insert/Update each item
+        // ----------------------------
+        for (const [index, item] of items.entries()) {
+            console.log(`\n---- Item ${index} ----`);
+            console.log("sales_item_id:", item.sales_item_id);
+            console.log("product_id:", item.product_id);
+            console.log("supplier_id:", item.supplier_id);
+            console.log("quantity:", item.quantity);
+            console.log("----------------------");
+
+            const productQuantity = Number(item.quantity || 0);
+            const totalDeliveryQuantity = Number(item.total_delivery_quantity || 0);
+            const totalDelivered = Number(item.total_delivered || 0);
+
+            if (item.sales_item_id) {
+                // UPDATE existing item
+                const updateItemQuery = `
+                    UPDATE sales_item
+                    SET product_id = ?, supplier_id = ?, product_quantity = ?, updated_at = NOW()
+                    WHERE sales_item_id = ?
+                `;
+                await executeQueryWithPromise(updateItemQuery, [
+                    item.product_id,
+                    item.supplier_id,
+                    productQuantity,
+                    item.sales_item_id
+                ]);
+
+                const updateDeliveryQuery = `
+                    UPDATE sales_deliveries
+                    SET total_delivery_quantity = ?, total_delivered = ?, updated_at = NOW()
+                    WHERE sales_item_id = ?
+                `;
+                await executeQueryWithPromise(updateDeliveryQuery, [
+                    totalDeliveryQuantity,
+                    totalDelivered,
+                    item.sales_item_id
+                ]);
+
+                console.log(`✔ Updated sales_item ID: ${item.sales_item_id}`);
+            } else {
+                // INSERT new item
+                const insertSalesItemQuery = `
+                    INSERT INTO sales_item (
+                        sales_id, product_id, supplier_id, product_quantity,
+                        created_at, updated_at
+                    )
+                    VALUES (?, ?, ?, ?, NOW(), NOW())
+                `;
+                const salesItemResult = await executeQueryWithPromise(insertSalesItemQuery, [
+                    salesId,
+                    item.product_id,
+                    item.supplier_id,
+                    productQuantity
+                ]);
+
+                const salesItemId = salesItemResult.insertId;
+
+                const insertSalesDeliveriesQuery = `
+                    INSERT INTO sales_deliveries (
+                        sales_item_id, total_delivery_quantity, total_delivered,
+                        created_at, updated_at
+                    )
+                    VALUES (?, ?, ?, NOW(), NOW())
+                `;
+                await executeQueryWithPromise(insertSalesDeliveriesQuery, [
+                    salesItemId,
+                    totalDeliveryQuantity,
+                    totalDelivered
+                ]);
+
+                console.log(`✔ Inserted new sales_item ID: ${salesItemId}`);
+            }
+        }
+
+        // ----------------------------
+        // Attachments
+        // ----------------------------
+        if (attachments.length > 0) {
+            console.log("✔ Saving attachments...");
+            const insertAttachmentQuery = `
+                INSERT INTO sales_attachments (sales_id, file_name, file_path, created_at)
+                VALUES (?, ?, ?, NOW())
+            `;
+            for (const file of attachments) {
+                await executeQueryWithPromise(insertAttachmentQuery, [
+                    salesId,
+                    file.originalname,
+                    file.path
+                ]);
+            }
+        }
+
+        res.json({ message: "Bulk sales processed successfully.", sales_id: salesId });
+
+    } catch (err) {
+        console.error("❌ Error processing bulk sales:", err);
+        res.status(500).json({ error: "Failed to process bulk sales." });
+    }
+});
 
 
+
+app.get("/sales/:id", async (req, res) => {
+    const saleId = req.params.id;
+
+    try {
+        const sale = await executeQueryWithPromise(
+            "SELECT * FROM sales WHERE sales_id = ?", [saleId]
+        );
+
+        if (!sale.length) return res.status(404).json({ error: "Sale not found" });
+
+        const items = await executeQueryWithPromise(
+            `SELECT si.sales_item_id, si.product_id, si.product_quantity, si.supplier_id,
+                    p.product_name, p.cost_price,
+                    sd.total_delivery_quantity AS qty_received
+             FROM sales_item si
+             LEFT JOIN sales_deliveries sd ON sd.sales_item_id = si.sales_item_id
+             LEFT JOIN products p ON p.product_id = si.product_id
+             WHERE si.sales_id = ?`,
+            [saleId]
+        );
+
+        res.json({
+            sale: sale[0],
+            items
+        });
+
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: "Error fetching sale" });
+    }
+});
+
+// Promisified version of your callback query
+function executeQueryWithPromise(query, params) {
+    return new Promise((resolve, reject) => {
+        executeQueryWithCallback(query, params, (err, result) => {
+            if (err) reject(err);
+            else resolve(result);
+        });
+    });
+}
 
 // Sales ->>>>>>>>>>>>  
 app.post("/sales", upload.array("attachments"), (req, res) => {
@@ -1732,7 +1972,7 @@ function adjustProductStock({ product_id, delta }, cb) {
 
                 conn.query('UPDATE products SET stock=? WHERE product_id=?', [next, pid], e2 => {
                     if (e2) return conn.rollback(() => { conn.release(); cb?.(e2); });
-                    const status = computeStockStatus(next); 
+                    const status = computeStockStatus(next);
                     conn.query('UPDATE products SET stock_status=? WHERE product_id=?', [status, pid], e3 => {
                         if (e3) return conn.rollback(() => { conn.release(); cb?.(e3); });
                         conn.commit(e4 => { conn.release(); cb?.(e4 || null); });
@@ -1759,11 +1999,11 @@ function getSessionWarehouseId(req, cb) {
 
 
 // Get warehouse + role info of the logged in account  
-function getWarehouseInfo(req, cb) {                   
-    const user = req.session?.user;                 
-    if (!user || !user.account_id) {                
-        return cb(new Error('Not authenticated'));  
-    }                                               
+function getWarehouseInfo(req, cb) {
+    const user = req.session?.user;
+    if (!user || !user.account_id) {
+        return cb(new Error('Not authenticated'));
+    }
 
     const sql = `
     SELECT 
@@ -1775,7 +2015,7 @@ function getWarehouseInfo(req, cb) {
     LEFT JOIN warehouse w ON w.warehouse_id = a.warehouse_id
     WHERE a.account_id = ? 
     LIMIT 1
-  `;                                               
+  `;
 
     db.query(sql, [user.account_id], (err, rows) => {
         if (err) return cb(err);
@@ -1784,7 +2024,7 @@ function getWarehouseInfo(req, cb) {
         const row = rows[0];
         cb(null, {
             account_id: row.account_id,
-            role: row.role,                         
+            role: row.role,
             warehouse_id: row.warehouse_id,
             warehouse_name: row.warehouse_name || 'Warehouse'
         });
@@ -2210,30 +2450,30 @@ app.delete('/returns/purchase/:id', (req, res) => {
 app.get('/dashboard/summary', (req, res) => {
     getWarehouseInfo(req, (e, wh) => {
         if (e) {
-            if (e.message === 'Not authenticated') {        
+            if (e.message === 'Not authenticated') {
                 return res.status(401).json({ error: 'Not authenticated' })
             }
             return res.status(500).json({ error: e.message })
         }
 
-        const role = String(wh.role || '').toLowerCase();     
-        const isAdmin = role === 'admin';                     
+        const role = String(wh.role || '').toLowerCase();
+        const isAdmin = role === 'admin';
 
-        let filterWarehouseId = null;                         
+        let filterWarehouseId = null;
 
         if (!isAdmin) {
-            filterWarehouseId = wh.warehouse_id;              
+            filterWarehouseId = wh.warehouse_id;
         } else if (req.query.warehouse_id) {
             const tmp = Number(req.query.warehouse_id);
             if (!Number.isNaN(tmp)) filterWarehouseId = tmp;
         }
 
-        const isAll = isAdmin && !filterWarehouseId;        
+        const isAll = isAdmin && !filterWarehouseId;
 
-        let qSales, qPurchases, qProducts;                    
+        let qSales, qPurchases, qProducts;
         let paramsSales = [];
         let paramsPurch = [];
-        let paramsProducts = [];                            
+        let paramsProducts = [];
 
         if (isAll) {
             // Admin, ALL warehouses
@@ -2247,15 +2487,15 @@ app.get('/dashboard/summary', (req, res) => {
             qPurchases =
                 'SELECT COALESCE(SUM(total_cost),0) AS total FROM purchases WHERE warehouse_id=?';
             qProducts =
-                'SELECT COUNT(*) AS cnt FROM products WHERE warehouse_id=?'; 
+                'SELECT COUNT(*) AS cnt FROM products WHERE warehouse_id=?';
 
             paramsSales = [filterWarehouseId];
             paramsPurch = [filterWarehouseId];
-            paramsProducts = [filterWarehouseId];               
+            paramsProducts = [filterWarehouseId];
         }
 
         const qWhInfo =
-            'SELECT warehouse_id, warehouse_name FROM warehouse WHERE warehouse_id=?'; 
+            'SELECT warehouse_id, warehouse_name FROM warehouse WHERE warehouse_id=?';
 
         function runTotals(warehouseRow) {
             db.query(qSales, paramsSales, (e1, r1) => {
@@ -2551,7 +2791,7 @@ app.get('/dashboard/warehouses', (req, res) => {
         }
 
         const sql =
-            'SELECT warehouse_id, warehouse_name FROM warehouse ORDER BY warehouse_name'; 
+            'SELECT warehouse_id, warehouse_name FROM warehouse ORDER BY warehouse_name';
         db.query(sql, [], (err, rows) => {
             if (err) return res.status(500).json({ error: err.message });
             res.json(rows || []);
@@ -2792,108 +3032,158 @@ app.delete("/bills/:payables_id", (req, res) => {
 }); */
 
 app.get("/due_dates", (req, res) => {
+
+    console.log("📌 /due_dates called...");
+
     const selectPayables = `
       SELECT a.*, w.warehouse_name, w.warehouse_id
       FROM payables a
       INNER JOIN warehouse w ON a.warehouse_id = w.warehouse_id
       WHERE a.bill_status = 'Active'
-  `;
-
-    db.query(selectPayables, (err, payables) => {
-        if (err) return res.status(500).json({ error: err });
-        if (!payables.length) return res.json([]);
-
-        const checkQuery = `
-        SELECT payables_id, month, year
-        FROM due_dates
     `;
 
-        db.query(checkQuery, (err, existingDueDates) => {
-            if (err) return res.status(500).json({ error: err });
+    db.query(selectPayables, (err, payables) => {
 
-            const existingIds = existingDueDates.map((row) => row.payables_id);
+        if (err) {
+            console.error("❌ Error fetching payables:", err);
+            return res.status(500).json({ error: err });
+        }
 
-            const missingDueDates = payables.filter(
-                (p) => !existingIds.includes(p.payables_id)
-            );
+        console.log(`✔ Payables fetched: ${payables.length}`);
 
-            if (missingDueDates.length === 0) {
-                const finalQuery = `
-          SELECT 
-            p.*, 
-            w.warehouse_name, w.warehouse_id,
-            d.due_date_id, d.month, d.year,
-            d.payment_status, d.payment_date, 
-            d.payment_mode, d.total_bill_amount, 
-            d.updated_at, d.added_at
-          FROM payables p
-          INNER JOIN warehouse w ON p.warehouse_id = w.warehouse_id
-          INNER JOIN due_dates d ON p.payables_id = d.payables_id
+        if (!payables.length) {
+            console.log("⚠ No active payables found.");
+            return res.json([]);
+        }
+
+        // ✅ Now checking duplicates based on added_at month/year
+        const checkQuery = `
+            SELECT 
+                payables_id,
+                MONTH(added_at) AS added_month,
+                YEAR(added_at) AS added_year
+            FROM due_dates
         `;
-                db.query(finalQuery, (err3, combined) => {
-                    if (err3) return res.status(500).json({ error: err3 });
-                    return res.json(combined);
-                });
-                return;
+
+        db.query(checkQuery, (err, existingDueDates) => {
+
+            if (err) {
+                console.error("❌ Error checking existing due_dates:", err);
+                return res.status(500).json({ error: err });
             }
+
+            console.log(`✔ Existing due_dates: ${existingDueDates.length}`);
 
             const now = new Date();
             const currentMonth = now.getMonth() + 1;
             const currentYear = now.getFullYear();
 
+            // ✅ Keep only rows created THIS MONTH + YEAR
+            const existingIdsThisMonth = existingDueDates
+                .filter(r =>
+                    r.added_month === currentMonth &&
+                    r.added_year === currentYear
+                )
+                .map(r => r.payables_id);
+
+            console.log("📌 Already has record this month:", existingIdsThisMonth);
+
+            // ❗ Only insert payables with NO entry for this MONTH
+            const missingDueDates = payables.filter(
+                p => !existingIdsThisMonth.includes(p.payables_id)
+            );
+
+            console.log(`📌 Missing for this month: ${missingDueDates.length}`);
+
+            // === If none missing ===
+            if (missingDueDates.length === 0) {
+                console.log("✔ No new due_dates to insert for this month.");
+
+                const finalQuery = `
+                    SELECT 
+                        p.*, w.warehouse_name, w.warehouse_id,
+                        d.due_date_id, d.month, d.year,
+                        d.payment_status, d.payment_date, 
+                        d.payment_mode, d.total_bill_amount, 
+                        d.updated_at, d.added_at
+                    FROM payables p
+                    INNER JOIN warehouse w ON p.warehouse_id = w.warehouse_id
+                    INNER JOIN due_dates d ON p.payables_id = d.payables_id
+                `;
+
+                return db.query(finalQuery, (err3, combined) => {
+                    if (err3) {
+                        console.error("❌ Error fetching merged:", err3);
+                        return res.status(500).json({ error: err3 });
+                    }
+                    console.log(`✔ Returned: ${combined.length} records`);
+                    res.json(combined);
+                });
+            }
+
+            // === INSERT missing due_dates ===
             const values = missingDueDates
                 .map(
                     (p) => `(
-            ${p.payables_id},
-            ${currentMonth},
-            ${currentYear},
-            'Pending',
-            ${p.due_date},   
-            0,
-            'None',
-            0,
-            NOW(),
-            NOW()
-          )`
+                        ${p.payables_id},
+                        ${currentMonth},
+                        ${currentYear},
+                        'Pending',
+                        ${p.due_date},
+                        0,
+                        'None',
+                        0,
+                        NOW(),
+                        NOW()
+                    )`
                 )
                 .join(",");
 
             const insertQuery = `
-          INSERT INTO due_dates (
-              payables_id,
-              month,
-              year,
-              payment_status,
-              due_date,
-              payment_date,
-              payment_mode,
-              total_bill_amount,
-              updated_at,
-              added_at
-          )
-          VALUES ${values}
-      `;
+                INSERT INTO due_dates (
+                    payables_id,
+                    month,
+                    year,
+                    payment_status,
+                    due_date,
+                    payment_date,
+                    payment_mode,
+                    total_bill_amount,
+                    updated_at,
+                    added_at
+                )
+                VALUES ${values}
+            `;
+
+            console.log("📝 INSERTING:", missingDueDates.length);
 
             db.query(insertQuery, (err2) => {
-                if (err2) return res.status(500).json({ error: err2 });
+                if (err2) {
+                    console.error("❌ Insert error:", err2);
+                    return res.status(500).json({ error: err2 });
+                }
 
-                console.log(`Inserted ${missingDueDates.length} new due_date records`);
+                console.log(`✔ Inserted ${missingDueDates.length} new due_dates.`);
 
                 const finalQuery = `
-          SELECT 
-            p.*, 
-            w.warehouse_name, w.warehouse_id,
-            d.due_date_id, d.month, d.year,
-            d.payment_status, d.payment_date, 
-            d.payment_mode, d.total_bill_amount, 
-            d.updated_at, d.added_at
-          FROM payables p
-          INNER JOIN warehouse w ON p.warehouse_id = w.warehouse_id
-          INNER JOIN due_dates d ON p.payables_id = d.payables_id
-        `;
+                    SELECT 
+                        p.*, w.warehouse_name, w.warehouse_id,
+                        d.due_date_id, d.month, d.year,
+                        d.payment_status, d.payment_date, 
+                        d.payment_mode, d.total_bill_amount, 
+                        d.updated_at, d.added_at
+                    FROM payables p
+                    INNER JOIN warehouse w ON p.warehouse_id = w.warehouse_id
+                    INNER JOIN due_dates d ON p.payables_id = d.payables_id
+                `;
 
                 db.query(finalQuery, (err3, combined) => {
-                    if (err3) return res.status(500).json({ error: err3 });
+                    if (err3) {
+                        console.error("❌ Final fetch error:", err3);
+                        return res.status(500).json({ error: err3 });
+                    }
+
+                    console.log(`✔ Final returned: ${combined.length}`);
                     res.json(combined);
                 });
             });

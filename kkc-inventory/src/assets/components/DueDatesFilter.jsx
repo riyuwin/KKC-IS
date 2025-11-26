@@ -17,9 +17,21 @@ export default function DueDatesFilter({ stockStatus, onStatusChange, sx, dataTo
             "July", "August", "September", "October", "November", "December"
         ];
  
-        const filteredData = dataToExport.filter((row) => {
+        /* const filteredData = dataToExport.filter((row) => {
             return row.year?.toString() === stockStatus;
+        }); */
+        const filteredData = dataToExport.filter((row) => {
+            const date =
+                row.payment_date ||
+                row.updated_at ||
+                row.bill_date;
+
+            if (!date) return false;
+
+            const year = new Date(date).getFullYear().toString();
+            return year === stockStatus;
         });
+
 
         if (!filteredData.length) {
             alert(`No records found for year ${stockStatus}`);

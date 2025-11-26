@@ -8,7 +8,7 @@ import PurchaseReportTable from "../components/PurchaseReportTable";
 import ProductReportTable from "../components/ProductReportTable";
 import StockFilter from "../components/StockFilter";
 import OutstandingDeliveriesTable from "../components/OutstandingDeliveriesTable";
-import OutstandingDeliveriesFilter from "../components/OutstandingDeliveriesSources";
+import OutstandingDeliveriesFilter from "../components/OutstandingDeliveriesFilter";
 
 // A11y Helpers for Tabs
 function a11yProps(index) {
@@ -118,7 +118,8 @@ function Reports() {
             <Box sx={{ mt: 0 }}>  
 
               <OutstandingDeliveriesTable
-                duration={duration} 
+                /* duration={duration}  */ 
+                stockStatus={stockStatus}
                 setDataToExport={setDataToExport}
               />
 

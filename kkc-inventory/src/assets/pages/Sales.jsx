@@ -12,8 +12,10 @@ import { bodyCellSx, headerCellSx } from "../components/TableLayout";
 import { dateFormat } from "../components/DateFormat";
 import TablePager from "../components/TablePager";
 import { FetchCurrentUser } from "../logics/auth/FetchCurentUser";
+import { useNavigate } from "react-router-dom";
 
 function Sales() {
+  const navigate = useNavigate();
   // Modal Variables States
   const [dialogOpen, setDialogOpen] = useState(false);
   const [dialogMode, setDialogMode] = useState(null);
@@ -31,16 +33,37 @@ function Sales() {
   // Filter Variables
   const [search, setSearch] = useState("");
 
-  const DialogHandler = (selectedDialogMode, data) => {
-    setDialogMode(selectedDialogMode);
-    setDialogOpen(true);
+  /* const DialogHandler = (selectedDialogMode, data) => {
 
     if (selectedDialogMode == "View" || selectedDialogMode == "Edit") {
+      
+      setDialogMode(selectedDialogMode);
+      setDialogOpen(true);
+      
       console.log("Selected Data: ", data)
       setSalesData(data);
       setSalesId(data?.sale?.sales_id);
+    } else if (selectedDialogMode == "Add"){
+      navigate("/sales/new");
+    }
+  }; */
+
+  const DialogHandler = (selectedDialogMode, data) => {
+
+    console.log("AGAGA: ", data?.sales_item.sales_id);
+    if (selectedDialogMode === "View" || selectedDialogMode === "Edit") {
+      navigate("/sales/new", {
+        state: {
+          mode: selectedDialogMode, // "View" or "Edit"
+          saleData: data,  
+          salesId:  data?.sales_item.sales_id,              
+        },
+      });
+    } else if (selectedDialogMode === "Add") {
+      navigate("/sales/new"); // normal add mode
     }
   };
+
 
   // Data Fetcher 
   useEffect(() => {

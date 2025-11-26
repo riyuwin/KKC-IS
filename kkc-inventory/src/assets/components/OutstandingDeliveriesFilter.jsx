@@ -18,10 +18,12 @@ export default function OutstandingDeliveriesFilter({
             return;
         }
 
+        //console.log("Test: ", stockStatus);
+
         // 🔹 Title
         let titleText = "KKC Inventory System - Outstanding Deliveries Summary";
         if (stockStatus === "sales") titleText = "KKC Inventory System - Outstanding Deliveries Sales Summary";
-        else if (stockStatus === "purchases") titleText = "KKC Inventory System - Outstanding Deliveries Purchase Summary";
+        else if (stockStatus === "purchase") titleText = "KKC Inventory System - Outstanding Deliveries Purchase Summary";
 
         // 🔹 Prepare export data (fixed)
         const exportData = dataToExport.map((row, index) => {
@@ -135,7 +137,7 @@ export default function OutstandingDeliveriesFilter({
             >
                 <MenuItem value="all">All</MenuItem>
                 <MenuItem value="sales">Sales</MenuItem>
-                <MenuItem value="purchases">Purchases</MenuItem>
+                <MenuItem value="purchase">Purchase</MenuItem>
             </TextField>
 
             {/* Export Button */}
