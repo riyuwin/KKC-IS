@@ -681,15 +681,41 @@ function applyReceivedToStock({ product_id, qty_received_delta, purchase_id }, c
 // ====== PURCHASES API ======
 
 // GET /purchases?search=...
-// Returns one row per purchase item, with a unified supplier_id/supplier_name
-app.get("/purchases", (req, res) => {
+app.get("/purchases", (req, res) => {                   
     const search = (req.query.search || "").trim();
     const like = `%${search}%`;
 
-    const sql = `
+    const userRole = req.session?.user?.role || "warehouse";         
+    const isAdmin = String(userRole).toLowerCase() === "admin";      
+
+    const qWarehouseParam = (req.query.warehouse_id || "").trim();   
+
+    const where = [];                                                
+    const params = [];                                               
+
+    if (search) {                                                   
+        where.push(
+            "(s.supplier_name LIKE ? OR si.supplier_name LIKE ? OR p.product_name LIKE ?)"
+        );
+        params.push(like, like, like);
+    }
+
+    function runQuery(enforcedWarehouseId = null) {                
+        if (!isAdmin) {
+            // warehouse account: enforce their own warehouse
+            where.push("pu.warehouse_id = ?");
+            params.push(enforcedWarehouseId);
+        } else if (qWarehouseParam && qWarehouseParam.toLowerCase() !== "all") {
+            // admin filter by dropdown
+            where.push("pu.warehouse_id = ?");
+            params.push(Number(qWarehouseParam));
+        }
+
+        const sql = `
     SELECT 
       pu.purchase_id,
       pu.purchase_date,
+      pu.warehouse_id,                               -- [ADDED]
 
       -- header-level supplier (for reference)
       pu.supplier_id                    AS header_supplier_id,
@@ -722,16 +748,28 @@ app.get("/purchases", (req, res) => {
     JOIN purchase_items pi ON pi.purchase_id = pu.purchase_id
     JOIN products p        ON p.product_id   = pi.product_id
     LEFT JOIN suppliers si ON si.supplier_id = pi.supplier_id
-    ${search ? "WHERE s.supplier_name LIKE ? OR si.supplier_name LIKE ? OR p.product_name LIKE ?" : ""}
+    ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
     ORDER BY pu.purchase_date DESC, pu.purchase_id DESC, pi.purchase_item_id ASC
   `;
+        db.query(sql, params, (err, rows) => {
+            if (err) return res.status(500).json({ error: err.message });
+            res.json(rows);
+        });
+    }
 
-    const params = search ? [like, like, like] : [];
-    db.query(sql, params, (err, rows) => {
-        if (err) return res.status(500).json({ error: err.message });
-        res.json(rows);
+    if (isAdmin) {                                                     
+        // admin: can see all (or filter via ?warehouse_id)
+        return runQuery(null);
+    }
+
+    getSessionWarehouseId(req, (eWh, wid) => {                         
+        if (eWh || !wid) {
+            return res.status(401).json({ error: "No warehouse for session" });
+        }
+        runQuery(wid);
     });
 });
+
 
 
 // POST /purchases  (create ONE purchase + ONE item)
