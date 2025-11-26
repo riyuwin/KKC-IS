@@ -1313,9 +1313,6 @@ app.post("/sales/bulk", async (req, res) => {
 
     const attachments = req.files || [];
 
-    // ================================
-    // LOGGING
-    // ================================
     console.log("===== Received Payload =====");
     console.log("sales_id:", sales_id);
     console.log("account_id:", account_id);
@@ -1338,8 +1335,7 @@ app.post("/sales/bulk", async (req, res) => {
         total_sale == null ||
         !sale_payment_status ||
         !delivery_status ||
-        !Array.isArray(items) ||
-        items.length === 0
+        !Array.isArray(items)
     ) {
         console.error("❌ Missing required information");
         return res.status(400).json({ error: "Missing required information." });
@@ -1393,8 +1389,34 @@ app.post("/sales/bulk", async (req, res) => {
         }
 
         // ----------------------------
-        // Insert/Update each item
+        // SYNC sales_item
         // ----------------------------
+
+        // 1. Get existing items from DB
+        const existingItems = await executeQueryWithPromise(
+            "SELECT sales_item_id FROM sales_item WHERE sales_id = ?",
+            [salesId]
+        );
+        const existingIds = existingItems.map((i) => i.sales_item_id);
+
+        // 2. Collect IDs from payload
+        const payloadIds = items.filter(i => i.sales_item_id).map(i => i.sales_item_id);
+
+        // 3. Delete items removed in frontend
+        const idsToDelete = existingIds.filter(id => !payloadIds.includes(id));
+        if (idsToDelete.length > 0) {
+            await executeQueryWithPromise(
+                `DELETE FROM sales_deliveries WHERE sales_item_id IN (${idsToDelete.map(() => '?').join(',')})`,
+                idsToDelete
+            );
+            await executeQueryWithPromise(
+                `DELETE FROM sales_item WHERE sales_item_id IN (${idsToDelete.map(() => '?').join(',')})`,
+                idsToDelete
+            );
+            console.log("✔ Deleted removed sales_items:", idsToDelete);
+        }
+
+        // 4. Insert/Update items from payload
         for (const [index, item] of items.entries()) {
             console.log(`\n---- Item ${index} ----`);
             console.log("sales_item_id:", item.sales_item_id);
@@ -1493,7 +1515,6 @@ app.post("/sales/bulk", async (req, res) => {
         res.status(500).json({ error: "Failed to process bulk sales." });
     }
 });
-
 
 
 app.get("/sales/:id", async (req, res) => {
