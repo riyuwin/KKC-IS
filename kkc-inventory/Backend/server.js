@@ -681,26 +681,26 @@ function applyReceivedToStock({ product_id, qty_received_delta, purchase_id }, c
 // ====== PURCHASES API ======
 
 // GET /purchases?search=...
-app.get("/purchases", (req, res) => {                   
+app.get("/purchases", (req, res) => {
     const search = (req.query.search || "").trim();
     const like = `%${search}%`;
 
-    const userRole = req.session?.user?.role || "warehouse";         
-    const isAdmin = String(userRole).toLowerCase() === "admin";      
+    const userRole = req.session?.user?.role || "warehouse";
+    const isAdmin = String(userRole).toLowerCase() === "admin";
 
-    const qWarehouseParam = (req.query.warehouse_id || "").trim();   
+    const qWarehouseParam = (req.query.warehouse_id || "").trim();
 
-    const where = [];                                                
-    const params = [];                                               
+    const where = [];
+    const params = [];
 
-    if (search) {                                                   
+    if (search) {
         where.push(
             "(s.supplier_name LIKE ? OR si.supplier_name LIKE ? OR p.product_name LIKE ?)"
         );
         params.push(like, like, like);
     }
 
-    function runQuery(enforcedWarehouseId = null) {                
+    function runQuery(enforcedWarehouseId = null) {
         if (!isAdmin) {
             // warehouse account: enforce their own warehouse
             where.push("pu.warehouse_id = ?");
@@ -757,12 +757,12 @@ app.get("/purchases", (req, res) => {
         });
     }
 
-    if (isAdmin) {                                                     
+    if (isAdmin) {
         // admin: can see all (or filter via ?warehouse_id)
         return runQuery(null);
     }
 
-    getSessionWarehouseId(req, (eWh, wid) => {                         
+    getSessionWarehouseId(req, (eWh, wid) => {
         if (eWh || !wid) {
             return res.status(401).json({ error: "No warehouse for session" });
         }
@@ -1066,12 +1066,11 @@ app.delete("/purchases/:id", (req, res) => {
 app.post("/purchases/bulk", (req, res) => {
     const {
         purchase_date,
-        supplier_id: headerSupplierId,
         items = [],
         payment_status = "Unpaid",
     } = req.body;
 
-    //console.log("BULK BODY:", JSON.stringify(req.body, null, 2));
+    console.log("📦 BULK PURCHASE BODY:", JSON.stringify(req.body, null, 2)); 
 
     if (!purchase_date || !Array.isArray(items) || items.length === 0) {
         return res
@@ -1081,14 +1080,8 @@ app.post("/purchases/bulk", (req, res) => {
 
     const clean = items
         .map((it) => {
-            const supId = toInt(
-                it.supplier_id !== undefined && it.supplier_id !== null
-                    ? it.supplier_id
-                    : headerSupplierId
-            );
-
             return {
-                supplier_id: supId,
+                supplier_id: toInt(it.supplier_id),
                 product_id: toInt(it.product_id),
                 quantity: Math.max(0, toInt(it.quantity)),
                 unit_cost: toMoney(it.unit_cost),
@@ -1097,7 +1090,14 @@ app.post("/purchases/bulk", (req, res) => {
                     it.purchase_payment_status || payment_status || "Unpaid",
             };
         })
-        .filter((x) => x.supplier_id && x.product_id && x.quantity > 0);
+        .filter(
+            (x) =>
+                x.supplier_id &&
+                x.product_id &&
+                x.quantity > 0 &&
+                x.unit_cost >= 0
+        );
+
 
     if (clean.length === 0) {
         return res
@@ -1105,64 +1105,57 @@ app.post("/purchases/bulk", (req, res) => {
             .json({ error: "No valid items after cleaning." });
     }
 
-    // Group items by supplier so each supplier gets its own purchase row
-    const supplierGroups = new Map();
-    for (const it of clean) {
-        if (!supplierGroups.has(it.supplier_id)) {
-            supplierGroups.set(it.supplier_id, []);
-        }
-        supplierGroups.get(it.supplier_id).push(it);
-    }
-
     getSessionWarehouseId(req, (eWh, whId) => {
-        if (eWh || !whId)
+        if (eWh || !whId) {
+            console.error("❌ No warehouse for session in /purchases/bulk"); 
             return res.status(401).json({ error: "No warehouse for session" });
+        }
 
-        const supplierIds = Array.from(supplierGroups.keys());
         const createdPurchases = [];
-        let idx = 0;
         let responseSent = false;
 
         const fail = (status, msg) => {
             if (responseSent) return;
             responseSent = true;
-            return res.status(status).json({ error: msg });
+            console.error("❌ /purchases/bulk error:", msg); 
+            res.status(status).json({ error: msg });
         };
 
-        function processNextSupplier() {
+        // Process items one-by-one
+        function processItem(index) {
             if (responseSent) return;
 
-            if (idx >= supplierIds.length) {
+            if (index >= clean.length) {
                 return res.json({
                     message: "Bulk purchases created",
                     purchases: createdPurchases,
                 });
             }
 
-            const supId = supplierIds[idx++];
-            const itemsForSupplier = supplierGroups.get(supId);
+            const it = clean[index];
+            const qty = it.quantity;
+            const recv = it.qty_received;
+            const ucost = it.unit_cost;
+            const item_total = qty * ucost;
+            const purchase_status = recomputePurchaseStatus(qty, recv);
 
-            const purchase_total = itemsForSupplier.reduce(
-                (s, x) => s + x.quantity * x.unit_cost,
-                0
-            );
-            const purchase_status = itemsForSupplier.every(
-                (x) => x.qty_received >= x.quantity
-            )
-                ? "Completed"
-                : "Pending";
-            const paymentStatus =
-                itemsForSupplier[0].purchase_payment_status || "Unpaid";
+            console.log(
+                `🧾 Creating purchase ${index + 1}/${clean.length}`,
+                it
+            ); 
 
             db.getConnection((err, conn) => {
-                if (err) return fail(500, err.message);
+                if (err) {
+                    return fail(500, err.message);
+                }
 
-                conn.beginTransaction((err) => {
-                    if (err) {
+                conn.beginTransaction((errTx) => {
+                    if (errTx) {
                         conn.release();
-                        return fail(500, err.message);
+                        return fail(500, errTx.message);
                     }
 
+                    // 1) INSERT purchases (header) 
                     conn.query(
                         `
                         INSERT INTO purchases
@@ -1172,10 +1165,10 @@ app.post("/purchases/bulk", (req, res) => {
                         [
                             purchase_date,
                             whId,
-                            supId,
-                            purchase_total,
+                            it.supplier_id,
+                            item_total,
                             purchase_status,
-                            paymentStatus,
+                            it.purchase_payment_status,
                         ],
                         (e1, r1) => {
                             if (e1) {
@@ -1185,115 +1178,91 @@ app.post("/purchases/bulk", (req, res) => {
                                 });
                             }
 
-                            const purchase_id = r1.insertId;
-                            const values = itemsForSupplier.map((x) => [
-                                purchase_id,
-                                x.product_id,
-                                supId,
-                                x.quantity,
-                                x.unit_cost,
-                                x.quantity * x.unit_cost,
-                                x.qty_received,
-                            ]);
+                            const newPurchaseId = r1.insertId;
 
                             conn.query(
                                 `
-                                INSERT INTO purchase_items
-                                    (purchase_id, product_id, supplier_id, quantity, unit_cost, total_cost, qty_received)
-                                VALUES ?
-                                `,
-                                [values],
-                                (e2) => {
+    INSERT INTO purchase_items
+        (purchase_id, product_id, supplier_id, quantity, unit_cost, total_cost, qty_received)
+    VALUES (?,?,?,?,?,?,?)
+    `,
+                                [
+                                    newPurchaseId,
+                                    it.product_id,
+                                    it.supplier_id,
+                                    qty,
+                                    ucost,
+                                    item_total,
+                                    recv,
+                                ],
+                                (e2, r2) => {                             
                                     if (e2) {
+                                        console.error("❌ purchase_items insert error:", e2); 
                                         return conn.rollback(() => {
                                             conn.release();
                                             fail(500, e2.message);
                                         });
                                     }
 
+                                    console.log(                        
+                                        "✅ purchase_items inserted:",   
+                                        { purchase_item_id: r2.insertId, purchase_id: newPurchaseId } 
+                                    );                                  
+
                                     conn.commit((e3) => {
-                                        conn.release();
-                                        if (e3) return fail(500, e3.message);
-
-                                        // Apply stock moves for received quantities (per item)
-                                        let pending = 0;
-                                        let errored = false;
-
-                                        itemsForSupplier.forEach((x) => {
-                                            if (x.qty_received > 0) {
-                                                pending++;
-                                                applyReceivedToStock(
-                                                    {
-                                                        product_id: x.product_id,
-                                                        qty_received_delta:
-                                                            x.qty_received,
-                                                        purchase_id,
-                                                    },
-                                                    (e4) => {
-                                                        if (
-                                                            errored ||
-                                                            responseSent
-                                                        )
-                                                            return;
-                                                        if (e4) {
-                                                            errored = true;
-                                                            return fail(
-                                                                500,
-                                                                e4.message
-                                                            );
-                                                        }
-                                                        pending--;
-                                                        if (
-                                                            pending === 0 &&
-                                                            !errored
-                                                        ) {
-                                                            createdPurchases.push(
-                                                                {
-                                                                    purchase_id,
-                                                                    supplier_id:
-                                                                        supId,
-                                                                    total_cost:
-                                                                        purchase_total,
-                                                                    purchase_status,
-                                                                    purchase_payment_status:
-                                                                        paymentStatus,
-                                                                }
-                                                            );
-                                                            processNextSupplier();
-                                                        }
-                                                    }
-                                                );
-                                            }
-                                        });
-
-                                        if (
-                                            pending === 0 &&
-                                            !errored &&
-                                            !responseSent
-                                        ) {
-                                            // No qty_received > 0, so no stock updates
-                                            createdPurchases.push({
-                                                purchase_id,
-                                                supplier_id: supId,
-                                                total_cost: purchase_total,
-                                                purchase_status,
-                                                purchase_payment_status:
-                                                    paymentStatus,
-                                            });
-                                            processNextSupplier();
+                                        if (e3) {
+                                            console.error("❌ commit error:", e3); 
+                                            conn.release();
+                                            return fail(500, e3.message);
                                         }
+
+                                        console.log("💾 TX committed for purchase_id", newPurchaseId); 
+
+                                        conn.release();
+
+                                        // 3) After commit, update stock based on qty_received (like /purchases)
+                                        applyReceivedToStock(
+                                            {
+                                                product_id: it.product_id,
+                                                qty_received_delta: recv,
+                                                purchase_id: newPurchaseId,
+                                            },
+                                            (e4) => {
+                                                if (e4) {
+                                                    console.error("❌ applyReceivedToStock error:", e4); 
+                                                    return fail(500, e4.message);
+                                                }
+
+                                                createdPurchases.push({
+                                                    purchase_id: newPurchaseId,
+                                                    supplier_id: it.supplier_id,
+                                                    total_cost: item_total,
+                                                    purchase_status,
+                                                    purchase_payment_status:
+                                                        it.purchase_payment_status,
+                                                });
+
+                                                // move on to next item
+                                                processItem(index + 1);
+                                            }
+                                        );
                                     });
                                 }
                             );
+
                         }
                     );
                 });
             });
         }
-
-        processNextSupplier();
+        processItem(0);
     });
 });
+
+
+
+
+
 
 // -------------------------
 // POST /sales/bulk
