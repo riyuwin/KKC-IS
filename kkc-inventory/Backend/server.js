@@ -1070,7 +1070,7 @@ app.post("/purchases/bulk", (req, res) => {
         payment_status = "Unpaid",
     } = req.body;
 
-    console.log("📦 BULK PURCHASE BODY:", JSON.stringify(req.body, null, 2)); 
+    console.log("📦 BULK PURCHASE BODY:", JSON.stringify(req.body, null, 2));
 
     if (!purchase_date || !Array.isArray(items) || items.length === 0) {
         return res
@@ -1107,7 +1107,7 @@ app.post("/purchases/bulk", (req, res) => {
 
     getSessionWarehouseId(req, (eWh, whId) => {
         if (eWh || !whId) {
-            console.error("❌ No warehouse for session in /purchases/bulk"); 
+            console.error("❌ No warehouse for session in /purchases/bulk");
             return res.status(401).json({ error: "No warehouse for session" });
         }
 
@@ -1117,7 +1117,7 @@ app.post("/purchases/bulk", (req, res) => {
         const fail = (status, msg) => {
             if (responseSent) return;
             responseSent = true;
-            console.error("❌ /purchases/bulk error:", msg); 
+            console.error("❌ /purchases/bulk error:", msg);
             res.status(status).json({ error: msg });
         };
 
@@ -1142,7 +1142,7 @@ app.post("/purchases/bulk", (req, res) => {
             console.log(
                 `🧾 Creating purchase ${index + 1}/${clean.length}`,
                 it
-            ); 
+            );
 
             db.getConnection((err, conn) => {
                 if (err) {
@@ -1195,28 +1195,28 @@ app.post("/purchases/bulk", (req, res) => {
                                     item_total,
                                     recv,
                                 ],
-                                (e2, r2) => {                             
+                                (e2, r2) => {
                                     if (e2) {
-                                        console.error("❌ purchase_items insert error:", e2); 
+                                        console.error("❌ purchase_items insert error:", e2);
                                         return conn.rollback(() => {
                                             conn.release();
                                             fail(500, e2.message);
                                         });
                                     }
 
-                                    console.log(                        
-                                        "✅ purchase_items inserted:",   
-                                        { purchase_item_id: r2.insertId, purchase_id: newPurchaseId } 
-                                    );                                  
+                                    console.log(
+                                        "✅ purchase_items inserted:",
+                                        { purchase_item_id: r2.insertId, purchase_id: newPurchaseId }
+                                    );
 
                                     conn.commit((e3) => {
                                         if (e3) {
-                                            console.error("❌ commit error:", e3); 
+                                            console.error("❌ commit error:", e3);
                                             conn.release();
                                             return fail(500, e3.message);
                                         }
 
-                                        console.log("💾 TX committed for purchase_id", newPurchaseId); 
+                                        console.log("💾 TX committed for purchase_id", newPurchaseId);
 
                                         conn.release();
 
@@ -1229,7 +1229,7 @@ app.post("/purchases/bulk", (req, res) => {
                                             },
                                             (e4) => {
                                                 if (e4) {
-                                                    console.error("❌ applyReceivedToStock error:", e4); 
+                                                    console.error("❌ applyReceivedToStock error:", e4);
                                                     return fail(500, e4.message);
                                                 }
 
@@ -2084,7 +2084,53 @@ function makeLabels(mode) {
     return labels;
 }
 
-function resolveWarehouseForSalesReturn(req, sales_item_id, cb) {
+function isAdminReq(req) {
+    const role = String(req.session?.user?.role || "").toLowerCase();
+    return role === "admin";
+}
+
+function getWarehouseFilterFromReq(req) {
+    // admin may pass ?warehouse_id= or "all"
+    const q = String(req.query.warehouse_id || "").trim();
+    if (isAdminReq(req)) {
+        if (!q || q.toLowerCase() === "all") return { isAll: true, warehouse_id: null };
+        const wid = Number(q);
+        return { isAll: false, warehouse_id: Number.isNaN(wid) ? null : wid };
+    }
+    // warehouse user: enforce session warehouse
+    return { isAll: false, warehouse_id: null }; // will be resolved with getSessionWarehouseId
+}
+
+function resolveWarehouseForProduct(product_id, cb) {
+    db.query(
+        "SELECT warehouse_id FROM products WHERE product_id=? LIMIT 1",
+        [toInt(product_id)],
+        (e, rows) => {
+            if (e) return cb(e);
+            cb(null, rows?.[0]?.warehouse_id || null);
+        }
+    );
+}
+
+function resolveWarehouseForPurchaseItem(purchase_item_id, cb) {
+    db.query(
+        `
+    SELECT pu.warehouse_id
+    FROM purchase_items pi
+    JOIN purchases pu ON pu.purchase_id = pi.purchase_id
+    WHERE pi.purchase_item_id = ?
+    LIMIT 1
+    `,
+        [toInt(purchase_item_id)],
+        (e, rows) => {
+            if (e) return cb(e);
+            cb(null, rows?.[0]?.warehouse_id || null);
+        }
+    );
+}
+
+// Updated: prefer sales_item -> else product warehouse -> else session
+function resolveWarehouseForSalesReturn(req, { sales_item_id = null, product_id = null }, cb) {
     if (sales_item_id) {
         const sql = `
       SELECT s.warehouse_id
@@ -2092,20 +2138,43 @@ function resolveWarehouseForSalesReturn(req, sales_item_id, cb) {
       JOIN sales s ON s.sales_id = si.sales_id
       WHERE si.sales_item_id = ? LIMIT 1
     `;
-        db.query(sql, [toInt(sales_item_id)], (e, rows) => {
+        return db.query(sql, [toInt(sales_item_id)], (e, rows) => {
             if (e) return cb(e);
-            if (rows?.length) return cb(null, rows[0].warehouse_id || null);
-            getSessionWarehouseId(req, cb);
+            if (rows?.length && rows[0].warehouse_id) return cb(null, rows[0].warehouse_id);
+            if (product_id) return resolveWarehouseForProduct(product_id, cb);
+            return getSessionWarehouseId(req, cb);
         });
-    } else {
-        getSessionWarehouseId(req, cb);
     }
+
+    if (product_id) return resolveWarehouseForProduct(product_id, (e, wid) => {
+        if (e) return cb(e);
+        if (wid) return cb(null, wid);
+        getSessionWarehouseId(req, cb);
+    });
+
+    return getSessionWarehouseId(req, cb);
 }
 
-// default to session warehouse
-function resolveWarehouseForPurchaseReturn(req, purchase_item_id, cb) {
-    getSessionWarehouseId(req, cb);
+// Updated: prefer purchase_item -> else product warehouse -> else session
+function resolveWarehouseForPurchaseReturn(req, { purchase_item_id = null, product_id = null }, cb) {
+    if (purchase_item_id) {
+        return resolveWarehouseForPurchaseItem(purchase_item_id, (e, wid) => {
+            if (e) return cb(e);
+            if (wid) return cb(null, wid);
+            if (product_id) return resolveWarehouseForProduct(product_id, cb);
+            return getSessionWarehouseId(req, cb);
+        });
+    }
+
+    if (product_id) return resolveWarehouseForProduct(product_id, (e, wid) => {
+        if (e) return cb(e);
+        if (wid) return cb(null, wid);
+        getSessionWarehouseId(req, cb);
+    });
+
+    return getSessionWarehouseId(req, cb);
 }
+
 
 function recordStockMovement(
     { product_id, warehouse_id = null, quantity, movement_type, sales_return_id = null, purchase_return_id = null },
@@ -2130,30 +2199,64 @@ function recordStockMovement(
 
 
 // SALES RETURNS
-app.get('/returns/sales', (req, res) => {
-    const search = (req.query.search || '').trim();
+app.get("/returns/sales", (req, res) => {
+    const search = (req.query.search || "").trim();
     const like = `%${search}%`;
-    const sql = `
-    SELECT 
-      sr.sales_return_id,
-      sr.sale_return_date AS date,
-      sr.product_id,
-      p.product_name AS product,
-      sr.quantity,
-      sr.reason,
-      sr.customer_name,
-      sr.confirmed
-    FROM sales_returns sr
-    JOIN products p ON p.product_id = sr.product_id
-    ${search ? `WHERE p.product_name LIKE ? OR sr.customer_name LIKE ? OR sr.reason LIKE ?` : ''}
-    ORDER BY sr.sale_return_date DESC, sr.sales_return_id DESC
-  `;
-    const params = search ? [like, like, like] : [];
-    db.query(sql, params, (err, rows) => {
-        if (err) return res.status(500).json({ error: err.message });
-        res.json(rows);
+
+    const admin = isAdminReq(req);
+    const adminFilter = getWarehouseFilterFromReq(req); // admin only
+
+    const where = [];
+    const params = [];
+
+    if (search) {
+        where.push("(p.product_name LIKE ? OR sr.customer_name LIKE ? OR sr.reason LIKE ?)");
+        params.push(like, like, like);
+    }
+
+    function run(enforcedWarehouseId = null) {
+        if (!admin) {
+            where.push("p.warehouse_id = ?");
+            params.push(enforcedWarehouseId);
+        } else {
+            if (!adminFilter.isAll && adminFilter.warehouse_id) {
+                where.push("p.warehouse_id = ?");
+                params.push(adminFilter.warehouse_id);
+            }
+        }
+
+        const sql = `
+      SELECT 
+        sr.sales_return_id,
+        sr.sale_return_date AS date,
+        sr.product_id,
+        p.product_name AS product,
+        p.warehouse_id,
+        w.warehouse_name,
+        sr.quantity,
+        sr.reason,
+        sr.customer_name,
+        sr.confirmed
+      FROM sales_returns sr
+      JOIN products p ON p.product_id = sr.product_id
+      LEFT JOIN warehouse w ON w.warehouse_id = p.warehouse_id
+      ${where.length ? "WHERE " + where.join(" AND ") : ""}
+      ORDER BY sr.sale_return_date DESC, sr.sales_return_id DESC
+    `;
+        db.query(sql, params, (err, rows) => {
+            if (err) return res.status(500).json({ error: err.message });
+            res.json(rows || []);
+        });
+    }
+
+    if (admin) return run(null);
+
+    getSessionWarehouseId(req, (eWh, wid) => {
+        if (eWh || !wid) return res.status(401).json({ error: "No warehouse for session" });
+        run(wid);
     });
 });
+
 
 app.post('/returns/sales', (req, res) => {
     const { sale_return_date, product_id, sales_item_id = null, quantity, reason, customer_name, confirmed = false } = req.body;
@@ -2177,7 +2280,8 @@ app.post('/returns/sales', (req, res) => {
         }
 
         // Pag na confirm: add stock and write a movement (+qty, type 'sales_return')
-        resolveWarehouseForSalesReturn(req, sales_item_id, (eW, whId) => {
+        resolveWarehouseForSalesReturn(req, { sales_item_id, product_id }, (eW, whId) => {
+
             if (eW) return res.status(500).json({ error: eW.message });
 
             adjustProductStock({ product_id, delta: +qty }, (e2) => {
@@ -2211,7 +2315,8 @@ app.put('/returns/sales/:id', (req, res) => {
         db.query(sql, params, (e1) => {
             if (e1) return res.status(500).json({ error: e1.message });
 
-            resolveWarehouseForSalesReturn(req, sales_item_id, (eW, whId) => {
+            resolveWarehouseForSalesReturn(req, { sales_item_id, product_id }, (eW, whId) => {
+
                 if (eW) return res.status(500).json({ error: eW.message });
 
                 // Handle stock + movement based on state changes
@@ -2301,32 +2406,67 @@ app.delete('/returns/sales/:id', (req, res) => {
 
 
 // PURCHASE RETURNS
-app.get('/returns/purchase', (req, res) => {
-    const search = (req.query.search || '').trim();
+app.get("/returns/purchase", (req, res) => {
+    const search = (req.query.search || "").trim();
     const like = `%${search}%`;
-    const sql = `
-    SELECT 
-      pr.purchase_return_id,
-      pr.purchase_return_date AS date,
-      pr.product_id,
-      p.product_name AS product,
-      pr.quantity,
-      pr.reason,
-      pr.supplier_id,
-      s.supplier_name,
-      pr.confirmed
-    FROM purchase_returns pr
-    JOIN products  p ON p.product_id   = pr.product_id
-    LEFT JOIN suppliers s ON s.supplier_id  = pr.supplier_id
-    ${search ? `WHERE p.product_name LIKE ? OR s.supplier_name LIKE ? OR pr.reason LIKE ?` : ''}
-    ORDER BY pr.purchase_return_date DESC, pr.purchase_return_id DESC
-  `;
-    const params = search ? [like, like, like] : [];
-    db.query(sql, params, (err, rows) => {
-        if (err) return res.status(500).json({ error: err.message });
-        res.json(rows);
+
+    const admin = isAdminReq(req);
+    const adminFilter = getWarehouseFilterFromReq(req);
+
+    const where = [];
+    const params = [];
+
+    if (search) {
+        where.push("(p.product_name LIKE ? OR s.supplier_name LIKE ? OR pr.reason LIKE ?)");
+        params.push(like, like, like);
+    }
+
+    function run(enforcedWarehouseId = null) {
+        if (!admin) {
+            where.push("p.warehouse_id = ?");
+            params.push(enforcedWarehouseId);
+        } else {
+            if (!adminFilter.isAll && adminFilter.warehouse_id) {
+                where.push("p.warehouse_id = ?");
+                params.push(adminFilter.warehouse_id);
+            }
+        }
+
+        const sql = `
+      SELECT 
+        pr.purchase_return_id,
+        pr.purchase_return_date AS date,
+        pr.product_id,
+        p.product_name AS product,
+        p.warehouse_id,
+        w.warehouse_name,
+        pr.quantity,
+        pr.reason,
+        pr.supplier_id,
+        s.supplier_name,
+        pr.confirmed
+      FROM purchase_returns pr
+      JOIN products p ON p.product_id = pr.product_id
+      LEFT JOIN warehouse w ON w.warehouse_id = p.warehouse_id
+      LEFT JOIN suppliers s ON s.supplier_id = pr.supplier_id
+      ${where.length ? "WHERE " + where.join(" AND ") : ""}
+      ORDER BY pr.purchase_return_date DESC, pr.purchase_return_id DESC
+    `;
+        db.query(sql, params, (err, rows) => {
+            if (err) return res.status(500).json({ error: err.message });
+            res.json(rows || []);
+        });
+    }
+
+    if (admin) return run(null);
+
+    getSessionWarehouseId(req, (eWh, wid) => {
+        if (eWh || !wid) return res.status(401).json({ error: "No warehouse for session" });
+        run(wid);
     });
 });
+
+
 
 app.post('/returns/purchase', (req, res) => {
     const { purchase_return_date, product_id, purchase_item_id = null, quantity, reason, supplier_id, confirmed = false } = req.body;
@@ -2350,7 +2490,8 @@ app.post('/returns/purchase', (req, res) => {
         }
 
         // If conirmed na, subtract stock and write movement (-qty, type 'purchase_return')
-        resolveWarehouseForPurchaseReturn(req, purchase_item_id, (eW, whId) => {
+        resolveWarehouseForPurchaseReturn(req, { purchase_item_id, product_id }, (eW, whId) => {
+
             if (eW) return res.status(500).json({ error: eW.message });
 
             adjustProductStock({ product_id, delta: -qty }, (e2) => {
@@ -2384,7 +2525,8 @@ app.put('/returns/purchase/:id', (req, res) => {
         db.query(sql, params, (e1) => {
             if (e1) return res.status(500).json({ error: e1.message });
 
-            resolveWarehouseForPurchaseReturn(req, purchase_item_id, (eW, whId) => {
+            resolveWarehouseForPurchaseReturn(req, { purchase_item_id, product_id }, (eW, whId) => {
+
                 if (eW) return res.status(500).json({ error: eW.message });
 
                 if (prev.confirmed && confirmed) {
@@ -2454,7 +2596,8 @@ app.delete('/returns/purchase/:id', (req, res) => {
         db.query('DELETE FROM purchase_returns WHERE purchase_return_id=?', [id], (e1) => {
             if (e1) return res.status(500).json({ error: e1.message });
 
-            resolveWarehouseForPurchaseReturn(req, prev.purchase_item_id, (eW, whId) => {
+            resolveWarehouseForPurchaseReturn(req, { purchase_item_id, product_id }, (eW, whId) => {
+
                 if (eW) return res.status(500).json({ error: eW.message });
 
                 if (prev.confirmed) {

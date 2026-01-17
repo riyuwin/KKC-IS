@@ -1,13 +1,14 @@
-import React, { useEffect, useMemo, useState } from "react";
-import { Box, Paper, Typography, Button, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, IconButton, CircularProgress, Tooltip, Chip, Stack, TextField, MenuItem } from "@mui/material";
+import React, { useEffect, useMemo, useState, useCallback } from "react";
+import { Box, Paper, Typography, Button, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, IconButton, CircularProgress, Tooltip, Chip, Stack } from "@mui/material";
 import { MdAdd, MdVisibility, MdEdit, MdDelete } from "react-icons/md";
 import PurchasesCRUD from "../logics/purchases/PurchasesCRUD";
 import SortableHeader, { getComparator, stableSort } from "../components/SortableHeader";
 import PurchaseDialog from "../components/PurchaseDialog";
-import { PortSuppliers, PortProducts } from "../api_ports/api";
+import { PortSuppliers, PortProducts, PortSession } from "../api_ports/api";
 import SearchBar from "../components/SearchBar";
 import TablePager from "../components/TablePager";
 import { Link } from "react-router-dom";
+import AdminWarehouseSelector from "../components/AdminWarehouseSelector";
 
 function peso(n) {
   if (n === "" || n === null || typeof n === "undefined") return "";
@@ -28,22 +29,21 @@ function dateFormat(v) {
     if (plain) {
       const [_, y, mo, d] = plain;
       const dt = new Date(Number(y), Number(mo) - 1, Number(d));
-      return dt.toLocaleDateString("en-US", {
-        month: "long",
-        day: "numeric",
-        year: "numeric",
-      });
+      return dt.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
     }
   }
 
   const dt = new Date(v);
   if (Number.isNaN(dt.getTime())) return String(v);
-  return dt.toLocaleDateString("en-US", {
-    month: "long",
-    day: "numeric",
-    year: "numeric",
-  });
+  return dt.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
 }
+
+const fetchJSON = async (url) => {
+  const r = await fetch(url, { credentials: "include" });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data?.error || `Request failed: ${url}`);
+  return data;
+};
 
 function Purchases() {
   const [rows, setRows] = useState([]);
@@ -53,10 +53,11 @@ function Purchases() {
 
   const [search, setSearch] = useState("");
   const [searchNow, setSearchNow] = useState("");
- 
-  const [role, setRole] = useState(""); 
-  const [warehouses, setWarehouses] = useState([]);    
-  const [selectedWarehouse, setSelectedWarehouse] = useState("all"); 
+
+  const [role, setRole] = useState("");
+  const isAdmin = role === "admin";
+
+  const [selectedWarehouseId, setSelectedWarehouseId] = useState("");
 
   const [open, setOpen] = useState(false);
   const [dialogMode, setDialogMode] = useState("create");
@@ -80,29 +81,17 @@ function Purchases() {
   useEffect(() => {
     (async () => {
       try {
-        const sres = await fetch("/session", { credentials: "include" });
-        const sdata = await sres.json();
-        const r = String(sdata?.user?.role || "").toLowerCase();
+        const sdata = await fetchJSON(PortSession);
+        const r = String(sdata?.user?.role || "").toLowerCase(); // handles "Admin"
         setRole(r);
-
-        if (r === "admin") {
-          const wres = await fetch("/warehouse", { credentials: "include" });
-          const wdata = await wres.json();
-          const list = Array.isArray(wdata) ? wdata : [];
-          setWarehouses(
-            list.map((w) => ({
-              warehouse_id: w.warehouse_id,
-              warehouse_name: w.warehouse_name || `Warehouse #${w.warehouse_id}`,
-            }))
-          );
-        }
-      } catch {
-        // ignore
+      } catch (e) {
+        console.error("Session load failed:", e);
+        setRole("");
       }
     })();
   }, []);
 
-  async function loadMeta() {
+  const loadMeta = useCallback(async () => {
     try {
       const [sres, pres] = await Promise.all([
         fetch(PortSuppliers, { credentials: "include" }),
@@ -118,25 +107,25 @@ function Purchases() {
       setSuppliers([]);
       setProducts([]);
     }
-  }
+  }, []);
 
-  async function load() {
+  const load = useCallback(async () => {
     setLoading(true);
     try {
-      const warehouseId = role === "admin" ? selectedWarehouse : null;
-      const data = await PurchasesCRUD.fetchPurchases(searchNow, warehouseId); 
+      const data = await PurchasesCRUD.fetchPurchases(searchNow, selectedWarehouseId);
       setRows(Array.isArray(data) ? data : []);
     } finally {
       setLoading(false);
     }
-  }
+  }, [searchNow, selectedWarehouseId]);
 
   useEffect(() => {
     loadMeta();
-  }, []);
+  }, [loadMeta]);
+
   useEffect(() => {
     load();
-  }, [searchNow, role, selectedWarehouse]); // include role + selectedWarehouse
+  }, [load]);
 
   const computedRows = useMemo(
     () =>
@@ -153,10 +142,7 @@ function Purchases() {
   );
 
   const getSupplierIdFromRow = (row) =>
-    row.supplier_id ??
-    row.item_supplier_id ??
-    row.header_supplier_id ??
-    null;
+    row.supplier_id ?? row.item_supplier_id ?? row.header_supplier_id ?? null;
 
   const headerCellSx = {
     py: 3.0,
@@ -189,12 +175,14 @@ function Purchases() {
     setSelectedId(null);
     setFormData({});
   };
+
   const openCreate = () => {
     setDialogMode("create");
     setSelectedId(null);
     setFormData({});
     setOpen(true);
   };
+
   const openView = (row) => {
     setDialogMode("view");
     setSelectedId(row.purchase_id);
@@ -234,19 +222,18 @@ function Purchases() {
     if (!res?.cancelled) await load();
   };
 
-  // widths for colgroup
   const colWidths = [
-    "9%",  // Date
-    "10%", // Supplier
-    "11%", // Product
-    "10%", // Purchased
-    "10%", // Received
-    "9%",  // Remaining
-    "7%",  // Unit ₱
-    "8%",  // Total ₱
-    "10%", // Order
-    "8%",  // Payment
-    "8%",  // Actions
+    "9%",
+    "10%",
+    "11%",
+    "10%",
+    "10%",
+    "9%",
+    "7%",
+    "8%",
+    "10%",
+    "8%",
+    "8%",
   ];
 
   return (
@@ -255,59 +242,73 @@ function Purchases() {
         Purchase
       </Typography>
 
-      <Stack
-        direction="row"
-        alignItems="center"
-        justifyContent="space-between"
-        sx={{ mb: 2, px: 1 }}
-        spacing={2}
+      <Box
+        sx={{
+          mb: 2,
+          px: 1,
+          display: "flex",
+          alignItems: "center",
+          gap: 2,
+        }}
       >
-        <SearchBar
-          search={search}
-          onSearchChange={setSearch}
-          placeholder="Search purchases..."
-        />
+        <Box
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            gap: 2,
+            flex: 1,
+            minWidth: 0,
+            justifyContent: "flex-start",
+          }}
+        >
+          <Box sx={{ flex: 1, minWidth: 0 }}>
+            <SearchBar
+              search={search}
+              onSearchChange={setSearch}
+              placeholder="Search purchases..."
+            />
+          </Box>
 
-        <Stack direction="row" spacing={2} alignItems="center">
-          {role === "admin" && (
-            <TextField
-              select
-              size="small"
-              label="Warehouse"
-              value={selectedWarehouse}
-              onChange={(e) => setSelectedWarehouse(e.target.value)}
-              sx={{ minWidth: 220 }}
-            >
-              <MenuItem value="all">All Warehouses</MenuItem>
-              {warehouses.map((w) => (
-                <MenuItem
-                  key={w.warehouse_id}
-                  value={String(w.warehouse_id)}
-                >
-                  {w.warehouse_name}
-                </MenuItem>
-              ))}
-            </TextField>
+          {isAdmin && (
+            <Box sx={{ flexShrink: 0 }}>
+              <AdminWarehouseSelector
+                value={selectedWarehouseId}
+                onChange={(e) => setSelectedWarehouseId(e.target.value)}
+                sx={{
+                  minWidth: 420,
+                  "& .MuiOutlinedInput-root": {
+                    borderRadius: 2,
+                    boxShadow: 3,
+                    backgroundColor: "#fff",
+                  },
+                  "& .MuiOutlinedInput-notchedOutline": {
+                    borderColor: "rgba(0,0,0,0.18)",
+                  },
+                }}
+              />
+            </Box>
           )}
+        </Box>
 
-          <Button
-            component={Link}
-            to="/purchases/new"
-            variant="contained"
-            startIcon={<MdAdd />}
-            sx={{
-              bgcolor: "#E67600",
-              "&:hover": { bgcolor: "#f99f3fff" },
-              textTransform: "none",
-              fontWeight: 600,
-              borderRadius: 2,
-            }}
-            onClick={openCreate}
-          >
-            Add Purchase
-          </Button>
-        </Stack>
-      </Stack>
+        <Button
+          component={Link}
+          to="/purchases/new"
+          variant="contained"
+          startIcon={<MdAdd />}
+          sx={{
+            bgcolor: "#E67600",
+            "&:hover": { bgcolor: "#f99f3fff" },
+            textTransform: "none",
+            fontWeight: 600,
+            borderRadius: 2,
+            whiteSpace: "nowrap",
+            ml: "auto",
+          }}
+          onClick={openCreate}
+        >
+          Add Purchase
+        </Button>
+      </Box>
 
       <Paper elevation={1} sx={{ borderRadius: 2, bgcolor: "transparent", boxShadow: "none" }}>
         <TableContainer
@@ -321,7 +322,7 @@ function Purchases() {
         >
           <TablePager
             data={sortedRows}
-            resetOn={`${order}-${orderBy}-${searchNow}-${selectedWarehouse}`}
+            resetOn={`${order}-${orderBy}-${searchNow}-${selectedWarehouseId}-${role}`}
             initialRowsPerPage={5}
             align="left"
           >
@@ -336,76 +337,16 @@ function Purchases() {
 
                   <TableHead sx={{ "& .MuiTableCell-root": headerCellSx }}>
                     <TableRow>
-                      <SortableHeader
-                        id="purchase_date"
-                        label="Date"
-                        order={order}
-                        orderBy={orderBy}
-                        onSort={handleSort}
-                      />
-                      <SortableHeader
-                        id="supplier_name"
-                        label="Supplier"
-                        order={order}
-                        orderBy={orderBy}
-                        onSort={handleSort}
-                      />
-                      <SortableHeader
-                        id="product_name"
-                        label="Product"
-                        order={order}
-                        orderBy={orderBy}
-                        onSort={handleSort}
-                      />
-                      <SortableHeader
-                        id="quantity"
-                        label="Purchased"
-                        order={order}
-                        orderBy={orderBy}
-                        onSort={handleSort}
-                      />
-                      <SortableHeader
-                        id="qty_received"
-                        label="Received"
-                        order={order}
-                        orderBy={orderBy}
-                        onSort={handleSort}
-                      />
-                      <SortableHeader
-                        id="remaining"
-                        label="Remaining"
-                        order={order}
-                        orderBy={orderBy}
-                        onSort={handleSort}
-                      />
-                      <SortableHeader
-                        id="unit_cost"
-                        label="Unit ₱"
-                        order={order}
-                        orderBy={orderBy}
-                        onSort={handleSort}
-                      />
-                      <SortableHeader
-                        id="total_cost"
-                        label="Total ₱"
-                        order={order}
-                        orderBy={orderBy}
-                        onSort={handleSort}
-                      />
-                      <SortableHeader
-                        id="purchase_status"
-                        label="Order"
-                        order={order}
-                        orderBy={orderBy}
-                        onSort={handleSort}
-                      />
-                      <SortableHeader
-                        id="purchase_payment_status"
-                        label="Payment"
-                        order={order}
-                        orderBy={orderBy}
-                        onSort={handleSort}
-                      />
+                      <SortableHeader id="purchase_date" label="Date" order={order} orderBy={orderBy} onSort={handleSort} />
+                      <SortableHeader id="supplier_name" label="Supplier" order={order} orderBy={orderBy} onSort={handleSort} />
+                      <SortableHeader id="product_name" label="Product" order={order} orderBy={orderBy} onSort={handleSort} />
+                      <SortableHeader id="quantity" label="Purchased" order={order} orderBy={orderBy} onSort={handleSort} />
+                      <SortableHeader id="qty_received" label="Received" order={order} orderBy={orderBy} onSort={handleSort} />
+                      <SortableHeader id="remaining" label="Remaining" order={order} orderBy={orderBy} onSort={handleSort} />
+                      <SortableHeader id="unit_cost" label="Unit ₱" order={order} orderBy={orderBy} onSort={handleSort} />
+                      <SortableHeader id="total_cost" label="Total ₱" order={order} orderBy={orderBy} onSort={handleSort} />
+                      <SortableHeader id="purchase_status" label="Order" order={order} orderBy={orderBy} onSort={handleSort} />
+                      <SortableHeader id="purchase_payment_status" label="Payment" order={order} orderBy={orderBy} onSort={handleSort} />
                       <TableCell sx={headerCellSx}>Actions</TableCell>
                     </TableRow>
                   </TableHead>
@@ -414,13 +355,7 @@ function Purchases() {
                     {loading ? (
                       <TableRow>
                         <TableCell colSpan={11}>
-                          <Stack
-                            direction="row"
-                            spacing={1}
-                            justifyContent="center"
-                            alignItems="center"
-                            py={2}
-                          >
+                          <Stack direction="row" spacing={1} justifyContent="center" alignItems="center" py={2}>
                             <CircularProgress size={18} />
                             <Typography variant="body2">Loading…</Typography>
                           </Stack>
@@ -437,30 +372,14 @@ function Purchases() {
                     ) : (
                       pagedRows.map((row) => (
                         <TableRow key={`${row.purchase_id}-${row.purchase_item_id}`}>
-                          <TableCell sx={wrapCellSx}>
-                            {dateFormat(row.purchase_date)}
-                          </TableCell>
-                          <TableCell title={row.supplier_name}>
-                            {row.supplier_name}
-                          </TableCell>
-                          <TableCell title={row.product_name}>
-                            {row.product_name}
-                          </TableCell>
-                          <TableCell title={String(row.quantity)}>
-                            {row.quantity}
-                          </TableCell>
-                          <TableCell title={String(row.qty_received)}>
-                            {row.qty_received}
-                          </TableCell>
-                          <TableCell title={String(row.remaining)}>
-                            {row.remaining}
-                          </TableCell>
-                          <TableCell title={peso(row.unit_cost)}>
-                            {peso(row.unit_cost)}
-                          </TableCell>
-                          <TableCell title={peso(row.total_cost)}>
-                            {peso(row.total_cost)}
-                          </TableCell>
+                          <TableCell sx={wrapCellSx}>{dateFormat(row.purchase_date)}</TableCell>
+                          <TableCell title={row.supplier_name}>{row.supplier_name}</TableCell>
+                          <TableCell title={row.product_name}>{row.product_name}</TableCell>
+                          <TableCell title={String(row.quantity)}>{row.quantity}</TableCell>
+                          <TableCell title={String(row.qty_received)}>{row.qty_received}</TableCell>
+                          <TableCell title={String(row.remaining)}>{row.remaining}</TableCell>
+                          <TableCell title={peso(row.unit_cost)}>{peso(row.unit_cost)}</TableCell>
+                          <TableCell title={peso(row.total_cost)}>{peso(row.total_cost)}</TableCell>
                           <TableCell sx={wrapCellSx}>
                             <Chip
                               size="small"
@@ -469,35 +388,21 @@ function Purchases() {
                               sx={{ px: 0.9, maxWidth: "none" }}
                             />
                           </TableCell>
-                          <TableCell sx={wrapCellSx}>
-                            {row.purchase_payment_status}
-                          </TableCell>
+                          <TableCell sx={wrapCellSx}>{row.purchase_payment_status}</TableCell>
                           <TableCell>
                             <Stack direction="row" justifyContent="center" spacing={-0.4}>
                               <Tooltip title="View">
-                                <IconButton
-                                  size="small"
-                                  color="success"
-                                  onClick={() => openView(row)}
-                                >
+                                <IconButton size="small" color="success" onClick={() => openView(row)}>
                                   <MdVisibility style={{ fontSize: 22 }} />
                                 </IconButton>
                               </Tooltip>
                               <Tooltip title="Edit">
-                                <IconButton
-                                  size="small"
-                                  color="primary"
-                                  onClick={() => openEdit(row)}
-                                >
+                                <IconButton size="small" color="primary" onClick={() => openEdit(row)}>
                                   <MdEdit style={{ fontSize: 22 }} />
                                 </IconButton>
                               </Tooltip>
                               <Tooltip title="Delete">
-                                <IconButton
-                                  size="small"
-                                  color="error"
-                                  onClick={() => handleDelete(row)}
-                                >
+                                <IconButton size="small" color="error" onClick={() => handleDelete(row)}>
                                   <MdDelete style={{ fontSize: 22 }} />
                                 </IconButton>
                               </Tooltip>
@@ -527,14 +432,20 @@ function Purchases() {
         onSubmit={async (payload) => {
           try {
             const isCreate = dialogMode === "create";
+
+            let body = payload;
+            if (isCreate && isAdmin && selectedWarehouseId) {
+              body = { ...payload, warehouse_id: Number(selectedWarehouseId) };
+            }
+
             const res = isCreate
-              ? await PurchasesCRUD.createPurchase(payload)
+              ? await PurchasesCRUD.createPurchase(body)
               : await PurchasesCRUD.updatePurchase(selectedId, payload);
+
             if (res?.cancelled) return;
             closeDialog();
             await load();
           } catch {
-            // alerts already shown in PurchasesCRUD component
           }
         }}
       />

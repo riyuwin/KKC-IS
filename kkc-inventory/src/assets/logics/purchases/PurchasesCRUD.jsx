@@ -27,12 +27,11 @@ const swalConfirm = async (title, text) => {
   return res.isConfirmed;
 };
 
-// now accepts warehouseId for admin filter + sends cookies  
 async function fetchPurchases(search = '', warehouseId = null) {      
   try {
     const url = new URL(PortPurchases);
     if (search) url.searchParams.set('search', search);
-    if (warehouseId && warehouseId !== 'all') {                      
+    if (warehouseId) {                      
       url.searchParams.set('warehouse_id', warehouseId);             
     }                                                                
 

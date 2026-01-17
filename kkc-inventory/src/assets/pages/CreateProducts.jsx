@@ -37,10 +37,8 @@ export default function CreateProduct() {
   const [sellingPrice, setSellingPrice] = useState("");
   const [supplierId, setSupplierId] = useState("");
 
-  // VAT mode: non-vat | inc-vat | ext-vat
   const [vatMode, setVatMode] = useState("non-vat");
 
-  // which line is being edited 
   const [editingId, setEditingId] = useState(null);
 
   // session & warehouses (for admin)
@@ -65,7 +63,6 @@ export default function CreateProduct() {
           );
         }
       } catch {
-        // ignore
       }
     })();
   }, []);
@@ -79,7 +76,6 @@ export default function CreateProduct() {
         const arr = Array.isArray(data) ? data : data?.results || [];
         setSuppliers(arr);
       } catch {
-        // ignore
       }
     })();
   }, []);
@@ -186,7 +182,6 @@ export default function CreateProduct() {
   function removeLine(id) {
     setLines((ls) => ls.filter((l) => l.temp_id !== id));
 
-    // if you're deleting the row currently being edited, reset the form
     setEditingId((curr) => {
       if (curr === id) {
         resetForm();
@@ -278,10 +273,7 @@ export default function CreateProduct() {
         <Grid
           container
           spacing={3}
-          alignItems="flex-start"
           sx={{
-            flexWrap: "nowrap",
-            overflowX: "auto",
             pb: 1,
           }}
         >
@@ -293,16 +285,12 @@ export default function CreateProduct() {
               selectedWarehouse={selectedWarehouse}
               setSelectedWarehouse={setSelectedWarehouse}
               suppliers={suppliers}
-              // VAT
               vatMode={vatMode}
               setVatMode={setVatMode}
-              // editing
               editingId={editingId}
-              // add/update + edit + remove
               onAddLine={addOrUpdateLine}
               onEditLine={startEditLine}
               onRemoveLine={removeLine}
-              // add-line fields
               pName={pName}
               setPName={setPName}
               sku={sku}
@@ -319,7 +307,6 @@ export default function CreateProduct() {
               setSellingPrice={setSellingPrice}
               supplierId={supplierId}
               setSupplierId={setSupplierId}
-              // lines
               lines={lines}
               fieldSx={fieldSx}
               peso={peso}
@@ -356,15 +343,7 @@ export default function CreateProduct() {
               minWidth: 300,
             }}
           >
-            <ProductCreationSummary
-              itemsCount={itemsCount}
-              totalInitialStock={totalInitialStock}
-              totalInventoryCost={totalInventoryCost}
-              totalPotentialRevenue={totalPotentialRevenue}
-              vatMode={vatMode}
-              lines={lines}
-              peso={peso}
-            />
+
           </Grid>
         </Grid>
       </Box>

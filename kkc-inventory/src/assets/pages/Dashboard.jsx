@@ -227,6 +227,16 @@ export default function Dashboard() {
           <AdminWarehouseSelector
             value={selectedWarehouseId}
             onChange={handleWarehouseChange}
+            sx={{
+              "& .MuiOutlinedInput-root": {
+                borderRadius: 2,
+                boxShadow: 3,
+                backgroundColor: "#fff",
+              },
+              "& .MuiOutlinedInput-notchedOutline": {
+                borderColor: "rgba(0,0,0,0.18)",
+              },
+            }}
           />
         </Box>
       </Box>

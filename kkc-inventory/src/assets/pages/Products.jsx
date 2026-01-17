@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useState } from "react";
-import { Box, Paper, Typography, Button, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, IconButton, CircularProgress, Tooltip, Chip, Stack, TextField, MenuItem } from "@mui/material";
+import React, { useEffect, useMemo, useState, useCallback } from "react";
+import { Box, Paper, Typography, Button, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, IconButton, CircularProgress, Tooltip, Chip, Stack } from "@mui/material";
 import { MdAdd, MdVisibility, MdEdit, MdDelete } from "react-icons/md";
 import { Link } from "react-router-dom";
 
@@ -8,6 +8,9 @@ import ProductDialog from "../components/ProductDialog";
 import SortableHeader, { getComparator, stableSort } from "../components/SortableHeader";
 import SearchBar from "../components/SearchBar";
 import TablePager from "../components/TablePager";
+import AdminWarehouseSelector from "../components/AdminWarehouseSelector";
+
+import { PortSession } from "../api_ports/api";
 
 function generateClientSku() {
   let s = "";
@@ -42,6 +45,13 @@ function makeEmptyForm() {
   };
 }
 
+const fetchJSON = async (url) => {
+  const r = await fetch(url, { credentials: "include" });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data?.error || `Request failed: ${url}`);
+  return data;
+};
+
 function Products() {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -49,10 +59,10 @@ function Products() {
   const [search, setSearch] = useState("");
   const [searchNow, setSearchNow] = useState("");
 
-  // session & warehouse filter (admin only)
   const [role, setRole] = useState(""); // "admin" | "warehouse"
-  const [warehouses, setWarehouses] = useState([]);
-  const [selectedWarehouse, setSelectedWarehouse] = useState("all");
+  const isAdmin = role === "admin";
+
+  const [selectedWarehouseId, setSelectedWarehouseId] = useState("");
 
   const [open, setOpen] = useState(false);
   const [dialogMode, setDialogMode] = useState("view");
@@ -73,45 +83,32 @@ function Products() {
     return () => clearTimeout(t);
   }, [search]);
 
-  // load session & warehouses (admin only)
   useEffect(() => {
     (async () => {
       try {
-        const sres = await fetch("/session", { credentials: "include" });
-        const sdata = await sres.json();
-        const r = String(sdata?.user?.role || "").toLowerCase();
+        const sdata = await fetchJSON(PortSession);
+        const r = String(sdata?.user?.role || "").toLowerCase(); 
         setRole(r);
-
-        if (r === "admin") {
-          const wres = await fetch("/warehouse", { credentials: "include" });
-          const wdata = await wres.json();
-          const list = Array.isArray(wdata) ? wdata : [];
-          setWarehouses(
-            list.map((w) => ({
-              warehouse_id: w.warehouse_id,
-              warehouse_name: w.warehouse_name || `Warehouse #${w.warehouse_id}`,
-            }))
-          );
-        }
-      } catch {
-        // ignore
+      } catch (e) {
+        console.error("Session load failed:", e);
+        setRole("");
       }
     })();
   }, []);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     try {
-      const warehouseId = role === "admin" ? selectedWarehouse : null;
-      const data = await ProductsCRUD.fetchProducts(searchNow, warehouseId);
+      const data = await ProductsCRUD.fetchProducts(searchNow, selectedWarehouseId);
       setRows(Array.isArray(data) ? data : data?.results || []);
     } finally {
       setLoading(false);
     }
-  };
+  }, [searchNow, selectedWarehouseId]);
+
   useEffect(() => {
     load();
-  }, [searchNow, role, selectedWarehouse]);
+  }, [load]);
 
   const computedRows = useMemo(() => {
     return rows.map((r) => {
@@ -120,8 +117,8 @@ function Products() {
         stock <= 0
           ? { label: "Out of Stock", color: "error" }
           : stock <= 5
-          ? { label: "Low", color: "warning" }
-          : { label: "In Stock", color: "success" };
+            ? { label: "Low", color: "warning" }
+            : { label: "In Stock", color: "success" };
 
       const supplier_display = r.supplier ?? r.supplier_name ?? "";
       return { ...r, _stockStatus: status, supplier_display };
@@ -217,56 +214,77 @@ function Products() {
         Products
       </Typography>
 
-      <Stack
-        direction="row"
-        alignItems="center"
-        justifyContent="space-between"
-        sx={{ mb: 2, px: 1 }}
-        spacing={2}
+      <Box
+        sx={{
+          mb: 2,
+          px: 1,
+          display: "flex",
+          alignItems: "center",
+          gap: 2,
+        }}
       >
-        <SearchBar
-          search={search}
-          onSearchChange={setSearch}
-          placeholder="Search products..."
-        />
+        <Box
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            gap: 2,
+            flex: 1,
+            minWidth: 0, 
+            justifyContent: "flex-start",
+          }}
+        >
+          <Box sx={{ flex: 1, minWidth: 0 }}>
+            <SearchBar
+              search={search}
+              onSearchChange={setSearch}
+              placeholder="Search products..."
+            />
+          </Box>
 
-        <Stack direction="row" spacing={2} alignItems="center">
-          {role === "admin" && (
-            <TextField
-              select
-              size="small"
-              label="Warehouse"
-              value={selectedWarehouse}
-              onChange={(e) => setSelectedWarehouse(e.target.value)}
-              sx={{ minWidth: 220 }}
-            >
-              <MenuItem value="all">All Warehouses</MenuItem>
-              {warehouses.map((w) => (
-                <MenuItem key={w.warehouse_id} value={String(w.warehouse_id)}>
-                  {w.warehouse_name}
-                </MenuItem>
-              ))}
-            </TextField>
+          {isAdmin && (
+            <Box sx={{ flexShrink: 0 }}>
+              <AdminWarehouseSelector
+                value={selectedWarehouseId}
+                onChange={(e) => setSelectedWarehouseId(e.target.value)}
+                sx={{
+                  minWidth: 420,          // wider
+                  "& .MuiOutlinedInput-root": {
+                    borderRadius: 2,
+                    boxShadow: 3,
+                    backgroundColor: "#fff",
+                  },
+                  "& .MuiOutlinedInput-notchedOutline": {
+                    borderColor: "rgba(0,0,0,0.18)",
+                  },
+                }}
+              />
+            </Box>
           )}
+        </Box>
 
-          <Button
-            component={Link}
-            to="/products/new"
-            variant="contained"
-            startIcon={<MdAdd />}
-            sx={{
-              bgcolor: "#E67600",
-              "&:hover": { bgcolor: "#f99f3fff" },
-              textTransform: "none",
-              fontWeight: 600,
-              borderRadius: 2,
-            }}
-          >
-            Add Product
-          </Button>
-        </Stack>
-      </Stack>
+        {/* RIGHT: Add button */}
+        <Button
+          component={Link}
+          to="/products/new"
+          variant="contained"
+          startIcon={<MdAdd />}
+          sx={{
+            bgcolor: "#E67600",
+            "&:hover": { bgcolor: "#f99f3fff" },
+            textTransform: "none",
+            fontWeight: 600,
+            borderRadius: 2,
+            whiteSpace: "nowrap",
+            ml: "auto", 
+          }}
+        >
+          Add Product
+        </Button>
+      </Box>
 
+
+
+      {/* TABLE */}
       <Paper elevation={1} sx={{ borderRadius: 2, bgcolor: "transparent", boxShadow: "none" }}>
         <TableContainer
           component={Paper}
@@ -279,7 +297,7 @@ function Products() {
         >
           <TablePager
             data={sortedRows}
-            resetOn={`${order}-${orderBy}-${searchNow}-${selectedWarehouse}`}
+            resetOn={`${order}-${orderBy}-${searchNow}-${selectedWarehouseId}-${role}`}
             initialRowsPerPage={5}
           >
             {({ pagedRows, Pagination }) => (
@@ -287,7 +305,7 @@ function Products() {
                 <Table size="small">
                   <TableHead sx={{ "& .MuiTableCell-root": headerCellSx }}>
                     <TableRow>
-                      {role === "admin" && (
+                      {isAdmin && (
                         <SortableHeader
                           id="warehouse_name"
                           label="Warehouse"
@@ -296,69 +314,17 @@ function Products() {
                           onSort={handleSort}
                         />
                       )}
-                      <SortableHeader
-                        id="product_name"
-                        label="Product Name"
-                        order={order}
-                        orderBy={orderBy}
-                        onSort={handleSort}
-                      />
-                      <SortableHeader
-                        id="sku"
-                        label="SKU/Code"
-                        order={order}
-                        orderBy={orderBy}
-                        onSort={handleSort}
-                      />
-                      <SortableHeader
-                        id="description"
-                        label="Description"
-                        order={order}
-                        orderBy={orderBy}
-                        onSort={handleSort}
-                      />
-                      <SortableHeader
-                        id="unit"
-                        label="Unit"
-                        order={order}
-                        orderBy={orderBy}
-                        onSort={handleSort}
-                      />
-                      <SortableHeader
-                        id="stock"
-                        label="Current Stock"
-                        order={order}
-                        orderBy={orderBy}
-                        onSort={handleSort}
-                      />
-                      <SortableHeader
-                        id="cost_price"
-                        label="Cost Price"
-                        order={order}
-                        orderBy={orderBy}
-                        onSort={handleSort}
-                      />
-                      <SortableHeader
-                        id="selling_price"
-                        label="Selling Price"
-                        order={order}
-                        orderBy={orderBy}
-                        onSort={handleSort}
-                      />
-                      <SortableHeader
-                        id="supplier_display"
-                        label="Supplier"
-                        order={order}
-                        orderBy={orderBy}
-                        onSort={handleSort}
-                      />
-                      <SortableHeader
-                        id="_stockStatus.label"
-                        label="Stock Status"
-                        order={order}
-                        orderBy={orderBy}
-                        onSort={handleSort}
-                      />
+
+                      <SortableHeader id="product_name" label="Product Name" order={order} orderBy={orderBy} onSort={handleSort} />
+                      <SortableHeader id="sku" label="SKU/Code" order={order} orderBy={orderBy} onSort={handleSort} />
+                      <SortableHeader id="description" label="Description" order={order} orderBy={orderBy} onSort={handleSort} />
+                      <SortableHeader id="unit" label="Unit" order={order} orderBy={orderBy} onSort={handleSort} />
+                      <SortableHeader id="stock" label="Current Stock" order={order} orderBy={orderBy} onSort={handleSort} />
+                      <SortableHeader id="cost_price" label="Cost Price" order={order} orderBy={orderBy} onSort={handleSort} />
+                      <SortableHeader id="selling_price" label="Selling Price" order={order} orderBy={orderBy} onSort={handleSort} />
+                      <SortableHeader id="supplier_display" label="Supplier" order={order} orderBy={orderBy} onSort={handleSort} />
+                      <SortableHeader id="_stockStatus.label" label="Stock Status" order={order} orderBy={orderBy} onSort={handleSort} />
+
                       <TableCell sx={{ ...headerCellSx }} width={160}>
                         Actions
                       </TableCell>
@@ -368,7 +334,7 @@ function Products() {
                   <TableBody sx={{ "& .MuiTableCell-root": bodyCellSx }}>
                     {loading ? (
                       <TableRow>
-                        <TableCell colSpan={role === "admin" ? 11 : 10} align="center">
+                        <TableCell colSpan={isAdmin ? 11 : 10} align="center">
                           <Stack direction="row" spacing={1} justifyContent="center" alignItems="center" py={2}>
                             <CircularProgress size={20} />
                             <Typography variant="body2">Loading…</Typography>
@@ -377,7 +343,7 @@ function Products() {
                       </TableRow>
                     ) : pagedRows.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={role === "admin" ? 11 : 10} align="center">
+                        <TableCell colSpan={isAdmin ? 11 : 10} align="center">
                           <Typography variant="body2" color="text.secondary" py={2}>
                             No products found.
                           </Typography>
@@ -386,9 +352,7 @@ function Products() {
                     ) : (
                       pagedRows.map((row) => (
                         <TableRow key={row.product_id ?? row.id ?? row.sku}>
-                          {role === "admin" && (
-                            <TableCell>{row.warehouse_name || "—"}</TableCell>
-                          )}
+                          {isAdmin && <TableCell>{row.warehouse_name || "—"}</TableCell>}
                           <TableCell>{row.product_name}</TableCell>
                           <TableCell>{row.sku}</TableCell>
                           <TableCell sx={wrapCellSx}>{row.description}</TableCell>
@@ -434,6 +398,8 @@ function Products() {
             )}
           </TablePager>
         </TableContainer>
+
+
       </Paper>
 
       <ProductDialog
@@ -443,15 +409,17 @@ function Products() {
         onClose={closeDialog}
         onSwitchToEdit={() => setDialogMode("edit")}
         role={role}
-        warehouses={warehouses}
-        defaultWarehouseId={selectedWarehouse !== "all" ? Number(selectedWarehouse) : ""}
+        warehouses={[]}
+        defaultWarehouseId={selectedWarehouseId ? Number(selectedWarehouseId) : ""}
         onSubmit={async (payload) => {
           try {
             const isCreate = dialogMode === "create";
+
             let body = payload;
-            if (isCreate && role === "admin") {
+            // If admin is creating and filter is set, force warehouse_id
+            if (isCreate && isAdmin) {
               const widFromDialog = payload?.warehouse_id ? Number(payload.warehouse_id) : null;
-              const widFromFilter = selectedWarehouse !== "all" ? Number(selectedWarehouse) : null;
+              const widFromFilter = selectedWarehouseId ? Number(selectedWarehouseId) : null;
               const finalWid = widFromDialog || widFromFilter || null;
               if (finalWid) body = { ...payload, warehouse_id: finalWid };
             }
@@ -464,7 +432,6 @@ function Products() {
             closeDialog();
             await load();
           } catch {
-            // error dialogs handled inside CRUD
           }
         }}
       />
