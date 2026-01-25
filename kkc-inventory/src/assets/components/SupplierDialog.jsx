@@ -4,6 +4,7 @@ import { MdClose } from 'react-icons/md';
 
 const emptyForm = {
   supplier_name: '',
+  tin_number: '',
   contact_name: '',
   contact_number: '',
   email: '',
@@ -20,10 +21,16 @@ function SupplierDialog({ open, mode = 'create', initialData = {}, onClose, onSu
 
   const title = useMemo(() => (isEdit ? 'Edit Supplier' : 'Add Supplier'), [isEdit]);
 
-  // Validators/Conditionals
+  // Conditionals
   const emailOk = !form.email || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email);
-  const phoneOk = !form.contact_number || form.contact_number.length <= 100; // DB cap
-  const canSubmit = form.supplier_name.trim() !== '' && emailOk && phoneOk;
+  const phoneOk = !form.contact_number || form.contact_number.length <= 100;
+
+  const tinRaw = String(form.tin_number || '').trim();
+  const tinAllowedChars = tinRaw !== '' && /^[\d-\s]+$/.test(tinRaw);
+  const tinHasDigit = /\d/.test(tinRaw);
+  const tinOk = tinAllowedChars && tinHasDigit;
+
+  const canSubmit = form.supplier_name.trim() !== '' && emailOk && phoneOk && tinOk;
 
   const handleChange = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
 
@@ -52,6 +59,24 @@ function SupplierDialog({ open, mode = 'create', initialData = {}, onClose, onSu
             required
             fullWidth
           />
+
+          <TextField
+            label="TIN Number"
+            value={form.tin_number}
+            onChange={handleChange('tin_number')}
+            error={tinRaw === '' || !tinOk}
+            helperText={
+              tinRaw === ''
+                ? 'Required'
+                : !tinAllowedChars
+                  ? 'Only numbers, dashes, and spaces are allowed'
+                  : !tinHasDigit
+                    ? 'TIN must contain at least one number'
+                    : ' '
+            }
+            fullWidth
+          />
+
           <TextField
             label="Contact Name"
             value={form.contact_name}

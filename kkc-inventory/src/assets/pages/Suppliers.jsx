@@ -11,7 +11,6 @@ function Suppliers() {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
 
-  // search state (debounced)
   const [search, setSearch] = useState('');
   const [searchNow, setSearchNow] = useState('');
 
@@ -68,6 +67,7 @@ function Suppliers() {
     setSelectedId(row.supplier_id);
     setForm({
       supplier_name: row.supplier_name || '',
+      tin_number: row.tin_number || '',
       contact_name: row.contact_name || '',
       contact_number: row.contact_number || '',
       email: row.email || '',
@@ -152,6 +152,7 @@ function Suppliers() {
                   <TableHead sx={{ '& .MuiTableCell-root': headerCellSx }}>
                     <TableRow>
                       <SortableHeader id="supplier_name" label="Supplier Name" order={order} orderBy={orderBy} onSort={handleSort} />
+                      <SortableHeader id="tin_number" label="TIN Number" order={order} orderBy={orderBy} onSort={handleSort} />
                       <SortableHeader id="contact_name" label="Contact Name" order={order} orderBy={orderBy} onSort={handleSort} />
                       <SortableHeader id="contact_number" label="Contact Number" order={order} orderBy={orderBy} onSort={handleSort} />
                       <SortableHeader id="email" label="Email" order={order} orderBy={orderBy} onSort={handleSort} />
@@ -163,7 +164,7 @@ function Suppliers() {
                   <TableBody sx={{ '& .MuiTableCell-root': bodyCellSx }}>
                     {loading ? (
                       <TableRow>
-                        <TableCell colSpan={6} align="center">
+                        <TableCell colSpan={7} align="center">
                           <Stack direction="row" spacing={1} justifyContent="center" alignItems="center" py={2}>
                             <CircularProgress size={20} />
                             <Typography variant="body2">Loading…</Typography>
@@ -172,7 +173,7 @@ function Suppliers() {
                       </TableRow>
                     ) : pagedRows.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={6} align="center">
+                        <TableCell colSpan={7} align="center">
                           <Typography variant="body2" color="text.secondary" py={2}>
                             No suppliers found.
                           </Typography>
@@ -182,6 +183,7 @@ function Suppliers() {
                       pagedRows.map((row) => (
                         <TableRow key={row.supplier_id}>
                           <TableCell>{row.supplier_name}</TableCell>
+                          <TableCell>{row.tin_number}</TableCell>
                           <TableCell>{row.contact_name}</TableCell>
                           <TableCell>{row.contact_number}</TableCell>
                           <TableCell>{row.email}</TableCell>
@@ -232,7 +234,6 @@ function Suppliers() {
             closeDialog();
             await load();
           } catch {
-            // errors already alerted by SuppliersCRUD
           }
         }}
       />

@@ -503,19 +503,57 @@ app.delete('/products/:id', (req, res) => {
 
 
 // SUPPLIERS
+function normalizeTinOrNull(value) {
+    if (value == null) return null;
+    const s = String(value).trim();
+    if (!s) return "__INVALID__"; // make required (so invalid if empty)
+
+    // allow only digits, dash, spaces
+    if (!/^[\d-\s]+$/.test(s)) return "__INVALID__";
+
+    // remove spaces, keep dashes as user typed
+    const noSpaces = s.replace(/\s+/g, "");
+
+    // must contain at least one digit
+    if (!/\d/.test(noSpaces)) return "__INVALID__";
+
+    const cleaned = noSpaces.replace(/-+/g, "-").replace(/^-|-$/g, "");
+
+    if (!/\d/.test(cleaned)) return "__INVALID__";
+
+    return cleaned; 
+}
 
 // GET /suppliers?search=...
 app.get('/suppliers', (req, res) => {
     const search = (req.query.search || '').trim();
     const like = `%${search}%`;
 
+    const where = [];
+    const params = [];
+
+    if (search) {
+        const digitsOnly = search.replace(/\D/g, '');
+        where.push(`(
+      supplier_name LIKE ?
+      OR contact_name LIKE ?
+      OR contact_number LIKE ?
+      OR email LIKE ?
+      OR address LIKE ?
+      OR tin_number LIKE ?
+      ${digitsOnly ? "OR REPLACE(tin_number,'-','') LIKE ?" : ""}
+    )`);
+
+        params.push(like, like, like, like, like, like);
+        if (digitsOnly) params.push(`%${digitsOnly}%`);
+    }
+
     const sql = `
-    SELECT supplier_id, supplier_name, contact_name, contact_number, email, address
+    SELECT supplier_id, supplier_name, tin_number, contact_name, contact_number, email, address
     FROM suppliers
-    ${search ? `WHERE supplier_name LIKE ? OR contact_name LIKE ? OR contact_number LIKE ? OR email LIKE ? OR address LIKE ?` : ''}
+    ${where.length ? "WHERE " + where.join(" AND ") : ""}
     ORDER BY supplier_name ASC
   `;
-    const params = search ? [like, like, like, like, like] : [];
 
     db.query(sql, params, (err, rows) => {
         if (err) return res.status(500).json({ error: err.message });
@@ -525,18 +563,24 @@ app.get('/suppliers', (req, res) => {
 
 // POST /suppliers
 app.post('/suppliers', (req, res) => {
-    const { supplier_name, contact_name, contact_number, email, address } = req.body;
+    const { supplier_name, tin_number, contact_name, contact_number, email, address } = req.body;
 
     if (!supplier_name || supplier_name.trim() === '') {
         return res.status(400).json({ error: 'supplier_name is required' });
     }
 
+    const tin = normalizeTinOrNull(tin_number);
+    if (tin === "__INVALID__") {
+        return res.status(400).json({ error: 'TIN is required and must contain only numbers/dashes (spaces allowed).' });
+    }
+
     const sql = `
-    INSERT INTO suppliers (supplier_name, contact_name, contact_number, email, address)
-    VALUES (?,?,?,?,?)
+    INSERT INTO suppliers (supplier_name, tin_number, contact_name, contact_number, email, address)
+    VALUES (?,?,?,?,?,?)
   `;
     const params = [
         supplier_name.trim(),
+        tin,
         contact_name || null,
         contact_number || null,
         email || null,
@@ -552,19 +596,25 @@ app.post('/suppliers', (req, res) => {
 // PUT /suppliers/:id
 app.put('/suppliers/:id', (req, res) => {
     const { id } = req.params;
-    const { supplier_name, contact_name, contact_number, email, address } = req.body;
+    const { supplier_name, tin_number, contact_name, contact_number, email, address } = req.body;
 
     if (!supplier_name || supplier_name.trim() === '') {
         return res.status(400).json({ error: 'supplier_name is required' });
     }
 
+    const tin = normalizeTinOrNull(tin_number);
+    if (tin === "__INVALID__") {
+        return res.status(400).json({ error: 'TIN is required and must contain only numbers/dashes (spaces allowed).' });
+    }
+
     const sql = `
     UPDATE suppliers
-       SET supplier_name=?, contact_name=?, contact_number=?, email=?, address=?
+       SET supplier_name=?, tin_number=?, contact_name=?, contact_number=?, email=?, address=?
      WHERE supplier_id=?
   `;
     const params = [
         supplier_name.trim(),
+        tin,
         contact_name || null,
         contact_number || null,
         email || null,
