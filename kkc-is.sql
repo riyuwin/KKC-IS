@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Generation Time: Jan 17, 2026 at 12:14 PM
+-- Generation Time: Jan 25, 2026 at 12:37 PM
 -- Server version: 10.4.32-MariaDB
 -- PHP Version: 8.0.30
 
@@ -708,6 +708,7 @@ INSERT INTO `stock_movements` (`stock_movement_id`, `product_id`, `warehouse_id`
 CREATE TABLE `suppliers` (
   `supplier_id` int(11) NOT NULL,
   `supplier_name` varchar(100) NOT NULL,
+  `tin_number` varchar(50) DEFAULT NULL,
   `contact_name` varchar(100) DEFAULT NULL,
   `contact_number` varchar(100) DEFAULT NULL,
   `email` varchar(255) DEFAULT NULL,
@@ -718,12 +719,12 @@ CREATE TABLE `suppliers` (
 -- Dumping data for table `suppliers`
 --
 
-INSERT INTO `suppliers` (`supplier_id`, `supplier_name`, `contact_name`, `contact_number`, `email`, `address`) VALUES
-(1, 'IT Supply', 'Maria Santos', '09171234567', 'itsupply@gmail.com', 'MANILA'),
-(2, 'Beta Distributors', 'Juan Dela Cruz', '09998887777', 'beta@gmail.com', 'QC'),
-(3, 'Electronic Supply', 'Liza Reyes', '09051239876', 'electronicsupply@gmail.com', 'MAKATI'),
-(4, 'One Supplier', 'Leigh', '09569610529', 'leigh@gmail.com', 'Mnl'),
-(5, 'Avesco', 'Jane', '09341234568', 'jane@gmail.com', 'DCN');
+INSERT INTO `suppliers` (`supplier_id`, `supplier_name`, `tin_number`, `contact_name`, `contact_number`, `email`, `address`) VALUES
+(1, 'IT Supply', '111-222-333', 'Maria Santos', '09171234567', 'itsupply@gmail.com', 'MANILA'),
+(2, 'Beta Distributors', '123456789', 'Juan Dela Cruz', '09998887777', 'beta@gmail.com', 'QC'),
+(3, 'Electronic Supply', '546-7895-00000', 'Liza Reyes', '09051239876', 'electronicsupply@gmail.com', 'MAKATI'),
+(4, 'One Supplier', '0123456789', 'Leigh', '09569610529', 'leigh@gmail.com', 'Mnl'),
+(5, 'Avesco', '123-45678-9012', 'Jane', '09341234568', 'jane@gmail.com', 'DCN');
 
 -- --------------------------------------------------------
 
